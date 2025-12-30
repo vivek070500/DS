@@ -12,12 +12,16 @@ import {
   UserCheck, 
   ArrowRight, 
   Loader2,
-  Sparkles 
+  Sparkles,
+  Navigation,
+  ExternalLink
 } from "lucide-react";
 
 export default function HomePage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | null>(null);
   const [photos, setPhotos] = useState<File[]>([]);
   const [formData, setFormData] = useState({
     employee_name: "",
@@ -29,6 +33,51 @@ export default function HomePage() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const getCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
+
+    setIsGettingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        setCoordinates({ lat: latitude, lng: longitude });
+        
+        // Try to get address from coordinates using reverse geocoding
+        try {
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+          );
+          const data = await response.json();
+          if (data.display_name) {
+            setFormData((prev) => ({ ...prev, location: data.display_name }));
+          } else {
+            setFormData((prev) => ({ ...prev, location: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}` }));
+          }
+        } catch {
+          setFormData((prev) => ({ ...prev, location: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}` }));
+        }
+        setIsGettingLocation(false);
+      },
+      (error) => {
+        setIsGettingLocation(false);
+        alert("Unable to get your location. Please enter it manually.");
+        console.error(error);
+      },
+      { enableHighAccuracy: true }
+    );
+  };
+
+  const openInGoogleMaps = () => {
+    if (coordinates) {
+      window.open(`https://www.google.com/maps?q=${coordinates.lat},${coordinates.lng}`, "_blank");
+    } else if (formData.location) {
+      window.open(`https://www.google.com/maps/search/${encodeURIComponent(formData.location)}`, "_blank");
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -106,16 +155,42 @@ export default function HomePage() {
                 <MapPin className="w-4 h-4 inline mr-2 text-primary-600" />
                 Location
               </label>
-              <input
-                type="text"
-                id="location"
-                name="location"
-                value={formData.location}
-                onChange={handleInputChange}
-                placeholder="Enter property location/address"
-                className="input-field"
-                required
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  id="location"
+                  name="location"
+                  value={formData.location}
+                  onChange={handleInputChange}
+                  placeholder="Enter property location/address"
+                  className="input-field flex-1"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={getCurrentLocation}
+                  disabled={isGettingLocation}
+                  className="px-4 py-3 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-xl transition-all duration-200 flex items-center gap-2 whitespace-nowrap"
+                  title="Get current GPS location"
+                >
+                  {isGettingLocation ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Navigation className="w-5 h-5" />
+                  )}
+                  <span className="hidden sm:inline">GPS</span>
+                </button>
+              </div>
+              {(coordinates || formData.location) && (
+                <button
+                  type="button"
+                  onClick={openInGoogleMaps}
+                  className="mt-2 text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Open in Google Maps
+                </button>
+              )}
             </div>
 
             {/* Date & Person Visited - Side by side */}
@@ -158,7 +233,7 @@ export default function HomePage() {
               <label className="form-label mb-4">
                 📸 Upload Site Photos
               </label>
-              <PhotoUploader photos={photos} onPhotosChange={setPhotos} maxPhotos={10} />
+              <PhotoUploader photos={photos} onPhotosChange={setPhotos} />
             </div>
           </div>
 
@@ -184,24 +259,6 @@ export default function HomePage() {
           </div>
         </form>
 
-        {/* Info Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8 animate-fade-in animation-delay-200">
-          <div className="bg-white/60 backdrop-blur-sm rounded-xl p-4 border border-gray-100">
-            <div className="text-2xl mb-2">📝</div>
-            <h3 className="font-semibold text-gray-800">Step 1</h3>
-            <p className="text-sm text-gray-500">Enter basic details & upload photos</p>
-          </div>
-          <div className="bg-white/60 backdrop-blur-sm rounded-xl p-4 border border-gray-100">
-            <div className="text-2xl mb-2">📋</div>
-            <h3 className="font-semibold text-gray-800">Step 2</h3>
-            <p className="text-sm text-gray-500">Fill complete inspection form</p>
-          </div>
-          <div className="bg-white/60 backdrop-blur-sm rounded-xl p-4 border border-gray-100">
-            <div className="text-2xl mb-2">📥</div>
-            <h3 className="font-semibold text-gray-800">Step 3</h3>
-            <p className="text-sm text-gray-500">Preview & download PDF report</p>
-          </div>
-        </div>
       </main>
     </div>
   );

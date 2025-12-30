@@ -137,6 +137,12 @@ type CreateInspectionRequest struct {
 type UpdateInspectionRequest struct {
 	Status string `json:"status,omitempty"`
 
+	// Initial info fields (editable)
+	EmployeeName   *string `json:"employee_name,omitempty"`
+	Location       *string `json:"location,omitempty"`
+	InspectionDate *string `json:"inspection_date,omitempty"`
+	PersonVisited  *string `json:"person_visited,omitempty"`
+
 	// All other fields are optional for updates
 	TypeOfCase             *string      `json:"type_of_case,omitempty"`
 	BankName               *string      `json:"bank_name,omitempty"`

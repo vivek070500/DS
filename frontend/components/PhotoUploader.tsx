@@ -8,24 +8,21 @@ import { cn } from "@/lib/utils";
 interface PhotoUploaderProps {
   photos: File[];
   onPhotosChange: (photos: File[]) => void;
-  maxPhotos?: number;
 }
 
 export default function PhotoUploader({
   photos,
   onPhotosChange,
-  maxPhotos = 10,
 }: PhotoUploaderProps) {
   const [previews, setPreviews] = useState<string[]>([]);
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
-      const newFiles = acceptedFiles.slice(0, maxPhotos - photos.length);
-      const newPhotos = [...photos, ...newFiles];
+      const newPhotos = [...photos, ...acceptedFiles];
       onPhotosChange(newPhotos);
 
       // Create previews for new files
-      newFiles.forEach((file) => {
+      acceptedFiles.forEach((file) => {
         const reader = new FileReader();
         reader.onload = () => {
           setPreviews((prev) => [...prev, reader.result as string]);
@@ -33,7 +30,7 @@ export default function PhotoUploader({
         reader.readAsDataURL(file);
       });
     },
-    [photos, onPhotosChange, maxPhotos]
+    [photos, onPhotosChange]
   );
 
   const removePhoto = (index: number) => {
@@ -48,8 +45,6 @@ export default function PhotoUploader({
     accept: {
       "image/*": [".jpeg", ".jpg", ".png", ".webp"],
     },
-    maxFiles: maxPhotos - photos.length,
-    disabled: photos.length >= maxPhotos,
   });
 
   return (
@@ -60,8 +55,7 @@ export default function PhotoUploader({
           "border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all duration-300",
           isDragActive
             ? "border-primary-500 bg-primary-50"
-            : "border-gray-200 hover:border-primary-400 hover:bg-primary-50/50",
-          photos.length >= maxPhotos && "opacity-50 cursor-not-allowed"
+            : "border-gray-200 hover:border-primary-400 hover:bg-primary-50/50"
         )}
       >
         <input {...getInputProps()} />
@@ -77,7 +71,7 @@ export default function PhotoUploader({
                 Drag & drop photos here, or click to select
               </p>
               <p className="text-sm text-gray-400">
-                {photos.length}/{maxPhotos} photos • JPG, PNG, WebP accepted
+                {photos.length} photo{photos.length !== 1 ? "s" : ""} selected • JPG, PNG, WebP accepted
               </p>
             </>
           )}

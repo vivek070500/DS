@@ -27,10 +27,10 @@
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-gray-200;
   }
   body {
-    @apply bg-gradient-to-br from-slate-50 via-primary-50/30 to-slate-100 text-foreground min-h-screen;
+    @apply bg-gradient-to-br from-slate-50 via-primary-50/30 to-slate-100 text-gray-900 min-h-screen;
   }
 }
 

@@ -56,12 +56,11 @@ export default function HistoryPage() {
     }
   };
 
-  const filteredInspections = inspections.filter(
-    (i) =>
-      i.location?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      i.employee_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      i.applicant_name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredInspections = inspections.filter((i) => {
+    if (!searchTerm.trim()) return true;
+    const term = searchTerm.toLowerCase().trim();
+    return (i.employee_name || "").toLowerCase().includes(term);
+  });
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -96,7 +95,7 @@ export default function HistoryPage() {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search inspections..."
+              placeholder="Search by employee name..."
               className="input-field pl-10 w-full sm:w-64"
             />
           </div>

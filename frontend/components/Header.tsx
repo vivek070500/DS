@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, History } from "lucide-react";
+import { Building2, History, Home } from "lucide-react";
 
 export default function Header() {
   return (
@@ -22,13 +22,22 @@ export default function Header() {
             </div>
           </Link>
           
-          <Link
-            href="/history"
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-all duration-200"
-          >
-            <History className="w-4 h-4" />
-            <span className="hidden sm:inline">History</span>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-all duration-200"
+            >
+              <Home className="w-4 h-4" />
+              <span className="hidden sm:inline">Home</span>
+            </Link>
+            <Link
+              href="/history"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-all duration-200"
+            >
+              <History className="w-4 h-4" />
+              <span className="hidden sm:inline">History</span>
+            </Link>
+          </div>
         </div>
       </div>
     </header>

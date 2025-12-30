@@ -142,22 +142,22 @@ func GetInspectionByID(id string) (*models.Inspection, error) {
 	var flatType sql.NullString
 
 	err := DB.QueryRow(`
-		SELECT id, created_at, updated_at, status,
-			employee_name, location, inspection_date, person_visited,
-			type_of_case, bank_name, applicant_name, project_name, property_address,
-			landmark, person_met_at_site, relation_with_applicant,
-			boundary_east, boundary_west, boundary_north, boundary_south,
-			num_floors, total_buildings, num_wings, total_flats, per_floor_flats,
-			flat_type, carpet_area, super_built_up_area,
-			occupancy_status, occupant_name, occupied_since, building_occupancy_percent,
-			age_of_building, surrounding_development_percent, num_lifts,
-			approx_rent, market_rate,
-			distance_railway, distance_bus, distance_hospital,
-			flooring_type, kitchen_platform, wall_tiles_kitchen, wall_tiles_toilet,
-			windows_type, ms_grill,
-			rcc_work, brick_work, internal_plaster, external_plaster, flooring_work,
-			window_door_fitting, painting_finishing, labours_at_site, num_labours,
-			construction_material_at_site
+		SELECT id, created_at, updated_at, COALESCE(status, 'draft'),
+			COALESCE(employee_name, ''), COALESCE(location, ''), COALESCE(inspection_date, ''), COALESCE(person_visited, ''),
+			COALESCE(type_of_case, ''), COALESCE(bank_name, ''), COALESCE(applicant_name, ''), COALESCE(project_name, ''), COALESCE(property_address, ''),
+			COALESCE(landmark, ''), COALESCE(person_met_at_site, ''), COALESCE(relation_with_applicant, ''),
+			COALESCE(boundary_east, ''), COALESCE(boundary_west, ''), COALESCE(boundary_north, ''), COALESCE(boundary_south, ''),
+			COALESCE(num_floors, ''), COALESCE(total_buildings, ''), COALESCE(num_wings, ''), COALESCE(total_flats, ''), COALESCE(per_floor_flats, ''),
+			flat_type, COALESCE(carpet_area, ''), COALESCE(super_built_up_area, ''),
+			COALESCE(occupancy_status, ''), COALESCE(occupant_name, ''), COALESCE(occupied_since, ''), COALESCE(building_occupancy_percent, ''),
+			COALESCE(age_of_building, ''), COALESCE(surrounding_development_percent, ''), COALESCE(num_lifts, ''),
+			COALESCE(approx_rent, ''), COALESCE(market_rate, ''),
+			COALESCE(distance_railway, ''), COALESCE(distance_bus, ''), COALESCE(distance_hospital, ''),
+			COALESCE(flooring_type, ''), COALESCE(kitchen_platform, ''), COALESCE(wall_tiles_kitchen, ''), COALESCE(wall_tiles_toilet, ''),
+			COALESCE(windows_type, ''), COALESCE(ms_grill, ''),
+			COALESCE(rcc_work, ''), COALESCE(brick_work, ''), COALESCE(internal_plaster, ''), COALESCE(external_plaster, ''), COALESCE(flooring_work, ''),
+			COALESCE(window_door_fitting, ''), COALESCE(painting_finishing, ''), COALESCE(labours_at_site, 0), COALESCE(num_labours, ''),
+			COALESCE(construction_material_at_site, 0)
 		FROM inspections WHERE id = ?`, id).Scan(
 		&i.ID, &i.CreatedAt, &i.UpdatedAt, &i.Status,
 		&i.EmployeeName, &i.Location, &i.InspectionDate, &i.PersonVisited,
@@ -197,8 +197,9 @@ func GetInspectionByID(id string) (*models.Inspection, error) {
 // GetAllInspections retrieves all inspections
 func GetAllInspections() ([]models.Inspection, error) {
 	rows, err := DB.Query(`
-		SELECT id, created_at, updated_at, status, employee_name, location, inspection_date, person_visited,
-			type_of_case, bank_name, applicant_name
+		SELECT id, created_at, updated_at, COALESCE(status, 'draft'), 
+			COALESCE(employee_name, ''), COALESCE(location, ''), COALESCE(inspection_date, ''), COALESCE(person_visited, ''),
+			COALESCE(type_of_case, ''), COALESCE(bank_name, ''), COALESCE(applicant_name, ''), COALESCE(project_name, '')
 		FROM inspections ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
@@ -211,7 +212,7 @@ func GetAllInspections() ([]models.Inspection, error) {
 		if err := rows.Scan(
 			&i.ID, &i.CreatedAt, &i.UpdatedAt, &i.Status,
 			&i.EmployeeName, &i.Location, &i.InspectionDate, &i.PersonVisited,
-			&i.TypeOfCase, &i.BankName, &i.ApplicantName,
+			&i.TypeOfCase, &i.BankName, &i.ApplicantName, &i.ProjectName,
 		); err != nil {
 			return nil, err
 		}
@@ -230,6 +231,22 @@ func UpdateInspection(id string, req models.UpdateInspectionRequest) (*models.In
 	if req.Status != "" {
 		query += ", status = ?"
 		args = append(args, req.Status)
+	}
+	if req.EmployeeName != nil {
+		query += ", employee_name = ?"
+		args = append(args, *req.EmployeeName)
+	}
+	if req.Location != nil {
+		query += ", location = ?"
+		args = append(args, *req.Location)
+	}
+	if req.InspectionDate != nil {
+		query += ", inspection_date = ?"
+		args = append(args, *req.InspectionDate)
+	}
+	if req.PersonVisited != nil {
+		query += ", person_visited = ?"
+		args = append(args, *req.PersonVisited)
 	}
 	if req.TypeOfCase != nil {
 		query += ", type_of_case = ?"

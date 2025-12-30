@@ -28,10 +28,13 @@ import {
   MapPin,
   Wrench,
   HardHat,
+  User,
+  Calendar,
+  UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type TabKey = "basic" | "property" | "boundaries" | "occupancy" | "financial" | "amenities" | "construction";
+type TabKey = "initial" | "basic" | "property" | "boundaries" | "occupancy" | "financial" | "amenities" | "construction";
 
 interface Tab {
   key: TabKey;
@@ -40,6 +43,7 @@ interface Tab {
 }
 
 const TABS: Tab[] = [
+  { key: "initial", label: "Initial Info", icon: <User className="w-4 h-4" /> },
   { key: "basic", label: "Basic Info", icon: <FileText className="w-4 h-4" /> },
   { key: "property", label: "Property", icon: <Building className="w-4 h-4" /> },
   { key: "boundaries", label: "Boundaries", icon: <Compass className="w-4 h-4" /> },
@@ -54,7 +58,7 @@ export default function FormPage() {
   const params = useParams();
   const id = params.id as string;
 
-  const [activeTab, setActiveTab] = useState<TabKey>("basic");
+  const [activeTab, setActiveTab] = useState<TabKey>("initial");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [inspection, setInspection] = useState<Inspection | null>(null);
@@ -198,6 +202,79 @@ export default function FormPage() {
 
         {/* Form Content */}
         <div className="card p-6 sm:p-8 animate-fade-in animation-delay-100">
+          {/* Initial Info Tab */}
+          {activeTab === "initial" && (
+            <div className="space-y-6">
+              <h3 className="section-title">
+                <User className="w-5 h-5 text-primary-600" />
+                Initial Information
+              </h3>
+              <p className="text-sm text-gray-500 -mt-2">
+                Edit the details you entered on the home page
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div>
+                  <label className="form-label">
+                    <User className="w-4 h-4 inline mr-2 text-primary-600" />
+                    Employee Name
+                  </label>
+                  <input
+                    type="text"
+                    name="employee_name"
+                    value={formData.employee_name || ""}
+                    onChange={handleInputChange}
+                    className="input-field"
+                    placeholder="Enter employee name"
+                  />
+                </div>
+                <div>
+                  <label className="form-label">
+                    <UserCheck className="w-4 h-4 inline mr-2 text-primary-600" />
+                    Person Visited
+                  </label>
+                  <input
+                    type="text"
+                    name="person_visited"
+                    value={formData.person_visited || ""}
+                    onChange={handleInputChange}
+                    className="input-field"
+                    placeholder="Name of person visited"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="form-label">
+                  <MapPin className="w-4 h-4 inline mr-2 text-primary-600" />
+                  Location
+                </label>
+                <input
+                  type="text"
+                  name="location"
+                  value={formData.location || ""}
+                  onChange={handleInputChange}
+                  className="input-field"
+                  placeholder="Enter property location"
+                />
+              </div>
+
+              <div>
+                <label className="form-label">
+                  <Calendar className="w-4 h-4 inline mr-2 text-primary-600" />
+                  Inspection Date
+                </label>
+                <input
+                  type="date"
+                  name="inspection_date"
+                  value={formData.inspection_date || ""}
+                  onChange={handleInputChange}
+                  className="input-field"
+                />
+              </div>
+            </div>
+          )}
+
           {/* Basic Info Tab */}
           {activeTab === "basic" && (
             <div className="space-y-6">
@@ -961,7 +1038,7 @@ export default function FormPage() {
         <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-gray-100 py-4 px-4">
           <div className="max-w-5xl mx-auto flex justify-between items-center">
             <div className="flex gap-3">
-              {activeTab === "basic" ? (
+              {activeTab === "initial" ? (
                 <button
                   onClick={() => router.push("/")}
                   className="btn-secondary flex items-center gap-2"
