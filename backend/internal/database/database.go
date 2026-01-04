@@ -13,6 +13,9 @@ import (
 
 var DB *sql.DB
 
+// Initial admin email
+const InitialAdminEmail = "vivektarachandani0705@gmail.com"
+
 func InitDB(dbPath string) error {
 	var err error
 	DB, err = sql.Open("sqlite3", dbPath)
@@ -25,11 +28,29 @@ func InitDB(dbPath string) error {
 		return err
 	}
 
+	// Seed initial admin
+	if err := seedInitialAdmin(); err != nil {
+		log.Printf("Warning: Could not seed initial admin: %v", err)
+	}
+
 	log.Println("Database initialized successfully")
 	return nil
 }
 
 func createTables() error {
+	usersTable := `
+	CREATE TABLE IF NOT EXISTS users (
+		id TEXT PRIMARY KEY,
+		email TEXT UNIQUE NOT NULL,
+		name TEXT NOT NULL,
+		picture TEXT,
+		role TEXT NOT NULL DEFAULT 'user',
+		is_active INTEGER NOT NULL DEFAULT 1,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		created_by TEXT
+	);`
+
 	inspectionsTable := `
 	CREATE TABLE IF NOT EXISTS inspections (
 		id TEXT PRIMARY KEY,
@@ -55,6 +76,9 @@ func createTables() error {
 		boundary_west TEXT,
 		boundary_north TEXT,
 		boundary_south TEXT,
+		approach_road TEXT,
+		road_width TEXT,
+		road_width_unit TEXT,
 		
 		num_floors TEXT,
 		total_buildings TEXT,
@@ -97,7 +121,8 @@ func createTables() error {
 		painting_finishing TEXT,
 		labours_at_site INTEGER DEFAULT 0,
 		num_labours TEXT,
-		construction_material_at_site INTEGER DEFAULT 0
+		construction_material_at_site INTEGER DEFAULT 0,
+		created_by_user_id TEXT
 	);`
 
 	photosTable := `
@@ -111,24 +136,66 @@ func createTables() error {
 		FOREIGN KEY (inspection_id) REFERENCES inspections(id) ON DELETE CASCADE
 	);`
 
+	if _, err := DB.Exec(usersTable); err != nil {
+		return err
+	}
 	if _, err := DB.Exec(inspectionsTable); err != nil {
 		return err
 	}
 	if _, err := DB.Exec(photosTable); err != nil {
 		return err
 	}
+
+	// Add new columns for existing databases (will silently fail if columns already exist)
+	migrations := []string{
+		"ALTER TABLE inspections ADD COLUMN approach_road TEXT",
+		"ALTER TABLE inspections ADD COLUMN road_width TEXT",
+		"ALTER TABLE inspections ADD COLUMN road_width_unit TEXT",
+		"ALTER TABLE inspections ADD COLUMN created_by_user_id TEXT",
+	}
+	for _, m := range migrations {
+		DB.Exec(m) // Ignore errors (column may already exist)
+	}
+
+	return nil
+}
+
+func seedInitialAdmin() error {
+	// Check if admin already exists
+	var count int
+	err := DB.QueryRow("SELECT COUNT(*) FROM users WHERE email = ?", InitialAdminEmail).Scan(&count)
+	if err != nil {
+		return err
+	}
+
+	if count > 0 {
+		return nil // Admin already exists
+	}
+
+	// Create initial admin
+	id := uuid.New().String()
+	now := time.Now()
+	_, err = DB.Exec(`
+		INSERT INTO users (id, email, name, role, is_active, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		id, InitialAdminEmail, "Admin", models.RoleAdmin, true, now, now)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Created initial admin user: %s", InitialAdminEmail)
 	return nil
 }
 
 // CreateInspection creates a new inspection record
-func CreateInspection(req models.CreateInspectionRequest) (*models.Inspection, error) {
+func CreateInspection(req models.CreateInspectionRequest, userID string) (*models.Inspection, error) {
 	id := uuid.New().String()
 	now := time.Now()
 
 	_, err := DB.Exec(`
-		INSERT INTO inspections (id, created_at, updated_at, employee_name, location, inspection_date, person_visited)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		id, now, now, req.EmployeeName, req.Location, req.InspectionDate, req.PersonVisited)
+		INSERT INTO inspections (id, created_at, updated_at, employee_name, location, inspection_date, person_visited, property_address, created_by_user_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, now, now, req.EmployeeName, req.Location, req.InspectionDate, req.PersonVisited, req.PropertyAddress, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -147,6 +214,7 @@ func GetInspectionByID(id string) (*models.Inspection, error) {
 			COALESCE(type_of_case, ''), COALESCE(bank_name, ''), COALESCE(applicant_name, ''), COALESCE(project_name, ''), COALESCE(property_address, ''),
 			COALESCE(landmark, ''), COALESCE(person_met_at_site, ''), COALESCE(relation_with_applicant, ''),
 			COALESCE(boundary_east, ''), COALESCE(boundary_west, ''), COALESCE(boundary_north, ''), COALESCE(boundary_south, ''),
+			COALESCE(approach_road, ''), COALESCE(road_width, ''), COALESCE(road_width_unit, ''),
 			COALESCE(num_floors, ''), COALESCE(total_buildings, ''), COALESCE(num_wings, ''), COALESCE(total_flats, ''), COALESCE(per_floor_flats, ''),
 			flat_type, COALESCE(carpet_area, ''), COALESCE(super_built_up_area, ''),
 			COALESCE(occupancy_status, ''), COALESCE(occupant_name, ''), COALESCE(occupied_since, ''), COALESCE(building_occupancy_percent, ''),
@@ -164,6 +232,7 @@ func GetInspectionByID(id string) (*models.Inspection, error) {
 		&i.TypeOfCase, &i.BankName, &i.ApplicantName, &i.ProjectName, &i.PropertyAddress,
 		&i.Landmark, &i.PersonMetAtSite, &i.RelationWithApplicant,
 		&i.BoundaryEast, &i.BoundaryWest, &i.BoundaryNorth, &i.BoundarySouth,
+		&i.ApproachRoad, &i.RoadWidth, &i.RoadWidthUnit,
 		&i.NumFloors, &i.TotalBuildings, &i.NumWings, &i.TotalFlats, &i.PerFloorFlats,
 		&flatType, &i.CarpetArea, &i.SuperBuiltUpArea,
 		&i.OccupancyStatus, &i.OccupantName, &i.OccupiedSince, &i.BuildingOccupancyPercent,
@@ -295,6 +364,18 @@ func UpdateInspection(id string, req models.UpdateInspectionRequest) (*models.In
 	if req.BoundarySouth != nil {
 		query += ", boundary_south = ?"
 		args = append(args, *req.BoundarySouth)
+	}
+	if req.ApproachRoad != nil {
+		query += ", approach_road = ?"
+		args = append(args, *req.ApproachRoad)
+	}
+	if req.RoadWidth != nil {
+		query += ", road_width = ?"
+		args = append(args, *req.RoadWidth)
+	}
+	if req.RoadWidthUnit != nil {
+		query += ", road_width_unit = ?"
+		args = append(args, *req.RoadWidthUnit)
 	}
 	if req.NumFloors != nil {
 		query += ", num_floors = ?"
@@ -503,5 +584,168 @@ func GetPhotosByInspectionID(inspectionID string) ([]models.Photo, error) {
 func DeletePhoto(id string) error {
 	_, err := DB.Exec("DELETE FROM photos WHERE id = ?", id)
 	return err
+}
+
+// ========== User Functions ==========
+
+// GetUserByEmail retrieves a user by email
+func GetUserByEmail(email string) (*models.User, error) {
+	var u models.User
+	var createdBy sql.NullString
+	var picture sql.NullString
+
+	err := DB.QueryRow(`
+		SELECT id, email, name, COALESCE(picture, ''), role, is_active, created_at, updated_at, created_by
+		FROM users WHERE email = ?`, email).Scan(
+		&u.ID, &u.Email, &u.Name, &picture, &u.Role, &u.IsActive, &u.CreatedAt, &u.UpdatedAt, &createdBy)
+	if err != nil {
+		return nil, err
+	}
+
+	if picture.Valid {
+		u.Picture = picture.String
+	}
+	if createdBy.Valid {
+		u.CreatedBy = createdBy.String
+	}
+
+	return &u, nil
+}
+
+// GetUserByID retrieves a user by ID
+func GetUserByID(id string) (*models.User, error) {
+	var u models.User
+	var createdBy sql.NullString
+	var picture sql.NullString
+
+	err := DB.QueryRow(`
+		SELECT id, email, name, COALESCE(picture, ''), role, is_active, created_at, updated_at, created_by
+		FROM users WHERE id = ?`, id).Scan(
+		&u.ID, &u.Email, &u.Name, &picture, &u.Role, &u.IsActive, &u.CreatedAt, &u.UpdatedAt, &createdBy)
+	if err != nil {
+		return nil, err
+	}
+
+	if picture.Valid {
+		u.Picture = picture.String
+	}
+	if createdBy.Valid {
+		u.CreatedBy = createdBy.String
+	}
+
+	return &u, nil
+}
+
+// GetAllUsers retrieves all users
+func GetAllUsers() ([]models.User, error) {
+	rows, err := DB.Query(`
+		SELECT id, email, name, COALESCE(picture, ''), role, is_active, created_at, updated_at, COALESCE(created_by, '')
+		FROM users ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []models.User
+	for rows.Next() {
+		var u models.User
+		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Picture, &u.Role, &u.IsActive, &u.CreatedAt, &u.UpdatedAt, &u.CreatedBy); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+
+	return users, nil
+}
+
+// CreateUser creates a new user
+func CreateUser(req models.CreateUserRequest, createdBy string) (*models.User, error) {
+	// Check if user already exists
+	existing, _ := GetUserByEmail(req.Email)
+	if existing != nil {
+		return nil, sql.ErrNoRows // User already exists
+	}
+
+	id := uuid.New().String()
+	now := time.Now()
+
+	_, err := DB.Exec(`
+		INSERT INTO users (id, email, name, role, is_active, created_at, updated_at, created_by)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, req.Email, req.Name, req.Role, true, now, now, createdBy)
+	if err != nil {
+		return nil, err
+	}
+
+	return GetUserByID(id)
+}
+
+// UpdateUser updates a user
+func UpdateUser(id string, req models.UpdateUserRequest) (*models.User, error) {
+	query := "UPDATE users SET updated_at = ?"
+	args := []interface{}{time.Now()}
+
+	if req.Name != nil {
+		query += ", name = ?"
+		args = append(args, *req.Name)
+	}
+	if req.Role != nil {
+		query += ", role = ?"
+		args = append(args, *req.Role)
+	}
+	if req.IsActive != nil {
+		query += ", is_active = ?"
+		args = append(args, *req.IsActive)
+	}
+
+	query += " WHERE id = ?"
+	args = append(args, id)
+
+	_, err := DB.Exec(query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	return GetUserByID(id)
+}
+
+// UpdateUserPicture updates user's profile picture
+func UpdateUserPicture(id, picture string) error {
+	_, err := DB.Exec("UPDATE users SET picture = ?, updated_at = ? WHERE id = ?", picture, time.Now(), id)
+	return err
+}
+
+// DeleteUser deletes a user
+func DeleteUser(id string) error {
+	_, err := DB.Exec("DELETE FROM users WHERE id = ?", id)
+	return err
+}
+
+// GetInspectionsByUserID retrieves all inspections created by a specific user
+func GetInspectionsByUserID(userID string) ([]models.Inspection, error) {
+	rows, err := DB.Query(`
+		SELECT id, created_at, updated_at, COALESCE(status, 'draft'), 
+			COALESCE(employee_name, ''), COALESCE(location, ''), COALESCE(inspection_date, ''), COALESCE(person_visited, ''),
+			COALESCE(type_of_case, ''), COALESCE(bank_name, ''), COALESCE(applicant_name, ''), COALESCE(project_name, '')
+		FROM inspections WHERE created_by_user_id = ? ORDER BY created_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var inspections []models.Inspection
+	for rows.Next() {
+		var i models.Inspection
+		if err := rows.Scan(
+			&i.ID, &i.CreatedAt, &i.UpdatedAt, &i.Status,
+			&i.EmployeeName, &i.Location, &i.InspectionDate, &i.PersonVisited,
+			&i.TypeOfCase, &i.BankName, &i.ApplicantName, &i.ProjectName,
+		); err != nil {
+			return nil, err
+		}
+		inspections = append(inspections, i)
+	}
+
+	return inspections, nil
 }
 

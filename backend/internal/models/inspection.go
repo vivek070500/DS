@@ -60,6 +60,9 @@ type Inspection struct {
 	BoundaryWest  string `json:"boundary_west"`
 	BoundaryNorth string `json:"boundary_north"`
 	BoundarySouth string `json:"boundary_south"`
+	ApproachRoad  string `json:"approach_road"`
+	RoadWidth     string `json:"road_width"`
+	RoadWidthUnit string `json:"road_width_unit"`
 
 	// Building Details
 	NumFloors        string      `json:"num_floors"`
@@ -111,6 +114,9 @@ type Inspection struct {
 	NumLabours                string `json:"num_labours"`
 	ConstructionMaterialAtSite bool   `json:"construction_material_at_site"`
 
+	// User tracking
+	CreatedByUserID string `json:"created_by_user_id"`
+
 	// Photos (populated from separate table)
 	Photos []Photo `json:"photos"`
 }
@@ -127,10 +133,11 @@ type Photo struct {
 
 // CreateInspectionRequest represents the initial creation request
 type CreateInspectionRequest struct {
-	EmployeeName   string `json:"employee_name" binding:"required"`
-	Location       string `json:"location" binding:"required"`
-	InspectionDate string `json:"inspection_date" binding:"required"`
-	PersonVisited  string `json:"person_visited"`
+	EmployeeName    string `json:"employee_name" binding:"required"`
+	Location        string `json:"location" binding:"required"`
+	InspectionDate  string `json:"inspection_date" binding:"required"`
+	PersonVisited   string `json:"person_visited"`
+	PropertyAddress string `json:"property_address"`
 }
 
 // UpdateInspectionRequest represents an update request
@@ -156,6 +163,9 @@ type UpdateInspectionRequest struct {
 	BoundaryWest           *string      `json:"boundary_west,omitempty"`
 	BoundaryNorth          *string      `json:"boundary_north,omitempty"`
 	BoundarySouth          *string      `json:"boundary_south,omitempty"`
+	ApproachRoad           *string      `json:"approach_road,omitempty"`
+	RoadWidth              *string      `json:"road_width,omitempty"`
+	RoadWidthUnit          *string      `json:"road_width_unit,omitempty"`
 	NumFloors              *string      `json:"num_floors,omitempty"`
 	TotalBuildings         *string      `json:"total_buildings,omitempty"`
 	NumWings               *string      `json:"num_wings,omitempty"`

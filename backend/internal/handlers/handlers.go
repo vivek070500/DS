@@ -1,18 +1,288 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"ds-enterprises/internal/database"
 	"ds-enterprises/internal/models"
 	"ds-enterprises/internal/pdf"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
+
+var jwtSecret = []byte("ds-enterprises-secret-key-change-in-production")
+
+// JWT Claims
+type Claims struct {
+	UserID string          `json:"user_id"`
+	Email  string          `json:"email"`
+	Role   models.UserRole `json:"role"`
+	jwt.RegisteredClaims
+}
+
+// GenerateJWT creates a new JWT token for a user
+func GenerateJWT(user *models.User) (string, error) {
+	claims := &Claims{
+		UserID: user.ID,
+		Email:  user.Email,
+		Role:   user.Role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * 7 * time.Hour)), // 7 days
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(jwtSecret)
+}
+
+// ValidateJWT validates a JWT token and returns the claims
+func ValidateJWT(tokenString string) (*Claims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		return jwtSecret, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		return claims, nil
+	}
+
+	return nil, fmt.Errorf("invalid token")
+}
+
+// AuthMiddleware validates JWT token from Authorization header
+func AuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+			c.Abort()
+			return
+		}
+
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		claims, err := ValidateJWT(tokenString)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			c.Abort()
+			return
+		}
+
+		// Check if user is still active
+		user, err := database.GetUserByID(claims.UserID)
+		if err != nil || !user.IsActive {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found or inactive"})
+			c.Abort()
+			return
+		}
+
+		c.Set("user_id", claims.UserID)
+		c.Set("user_email", claims.Email)
+		c.Set("user_role", claims.Role)
+		c.Next()
+	}
+}
+
+// AdminMiddleware ensures user has admin role
+func AdminMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, exists := c.Get("user_role")
+		if !exists || role != models.RoleAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
+// ========== Auth Handlers ==========
+
+// GoogleLogin handles POST /api/auth/google
+func GoogleLogin(c *gin.Context) {
+	var req models.LoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Verify Google token
+	googleUser, err := verifyGoogleToken(req.GoogleToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Google token: " + err.Error()})
+		return
+	}
+
+	// Check if user exists in our database
+	user, err := database.GetUserByEmail(googleUser.Email)
+	if err != nil {
+		// User not found - check if they're allowed to login
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "User not registered",
+			"message": "Please contact admin to get access to the system",
+		})
+		return
+	}
+
+	// Check if user is active
+	if !user.IsActive {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Your account has been deactivated"})
+		return
+	}
+
+	// Update user's picture from Google
+	if googleUser.Picture != "" && googleUser.Picture != user.Picture {
+		database.UpdateUserPicture(user.ID, googleUser.Picture)
+		user.Picture = googleUser.Picture
+	}
+
+	// Generate JWT token
+	token, err := GenerateJWT(user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.LoginResponse{
+		User:  user,
+		Token: token,
+	})
+}
+
+// verifyGoogleToken verifies the Google access token and returns user info
+func verifyGoogleToken(accessToken string) (*models.GoogleUserInfo, error) {
+	// Use Google's userinfo endpoint to get user data
+	resp, err := http.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + accessToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify token: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("google API error: %s", string(body))
+	}
+
+	var userInfo models.GoogleUserInfo
+	if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %v", err)
+	}
+
+	return &userInfo, nil
+}
+
+// GetCurrentUser handles GET /api/auth/me
+func GetCurrentUser(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	user, err := database.GetUserByID(userID.(string))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, user)
+}
+
+// ========== User Management Handlers (Admin Only) ==========
+
+// GetAllUsers handles GET /api/users
+func GetAllUsers(c *gin.Context) {
+	users, err := database.GetAllUsers()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if users == nil {
+		users = []models.User{}
+	}
+
+	c.JSON(http.StatusOK, users)
+}
+
+// CreateUser handles POST /api/users
+func CreateUser(c *gin.Context) {
+	var req models.CreateUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate role
+	if req.Role != models.RoleAdmin && req.Role != models.RoleUser {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid role. Must be 'admin' or 'user'"})
+		return
+	}
+
+	// Get admin's user ID
+	adminID, _ := c.Get("user_id")
+
+	user, err := database.CreateUser(req, adminID.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User with this email already exists"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, user)
+}
+
+// UpdateUser handles PUT /api/users/:id
+func UpdateUser(c *gin.Context) {
+	id := c.Param("id")
+
+	var req models.UpdateUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate role if provided
+	if req.Role != nil && *req.Role != models.RoleAdmin && *req.Role != models.RoleUser {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid role. Must be 'admin' or 'user'"})
+		return
+	}
+
+	user, err := database.UpdateUser(id, req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, user)
+}
+
+// DeleteUser handles DELETE /api/users/:id
+func DeleteUser(c *gin.Context) {
+	id := c.Param("id")
+
+	// Prevent deleting yourself
+	currentUserID, _ := c.Get("user_id")
+	if id == currentUserID.(string) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot delete your own account"})
+		return
+	}
+
+	if err := database.DeleteUser(id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
+}
+
+// ========== Inspection Handlers ==========
 
 // CreateInspection handles POST /api/inspections
 func CreateInspection(c *gin.Context) {
@@ -22,7 +292,14 @@ func CreateInspection(c *gin.Context) {
 		return
 	}
 
-	inspection, err := database.CreateInspection(req)
+	// Get user ID from context
+	userID, exists := c.Get("user_id")
+	userIDStr := ""
+	if exists {
+		userIDStr = userID.(string)
+	}
+
+	inspection, err := database.CreateInspection(req, userIDStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -41,12 +318,34 @@ func GetInspection(c *gin.Context) {
 		return
 	}
 
+	// Check if user has access (admin can see all, users only their own)
+	role, _ := c.Get("user_role")
+	userID, _ := c.Get("user_id")
+	
+	if role != models.RoleAdmin && inspection.CreatedByUserID != userID.(string) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		return
+	}
+
 	c.JSON(http.StatusOK, inspection)
 }
 
 // GetAllInspections handles GET /api/inspections
 func GetAllInspections(c *gin.Context) {
-	inspections, err := database.GetAllInspections()
+	role, _ := c.Get("user_role")
+	userID, _ := c.Get("user_id")
+
+	var inspections []models.Inspection
+	var err error
+
+	if role == models.RoleAdmin {
+		// Admin can see all inspections
+		inspections, err = database.GetAllInspections()
+	} else {
+		// Users can only see their own inspections
+		inspections, err = database.GetInspectionsByUserID(userID.(string))
+	}
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -63,24 +362,54 @@ func GetAllInspections(c *gin.Context) {
 func UpdateInspection(c *gin.Context) {
 	id := c.Param("id")
 
+	// Check access
+	inspection, err := database.GetInspectionByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Inspection not found"})
+		return
+	}
+
+	role, _ := c.Get("user_role")
+	userID, _ := c.Get("user_id")
+	
+	if role != models.RoleAdmin && inspection.CreatedByUserID != userID.(string) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		return
+	}
+
 	var req models.UpdateInspectionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	inspection, err := database.UpdateInspection(id, req)
+	updatedInspection, err := database.UpdateInspection(id, req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, inspection)
+	c.JSON(http.StatusOK, updatedInspection)
 }
 
 // DeleteInspection handles DELETE /api/inspections/:id
 func DeleteInspection(c *gin.Context) {
 	id := c.Param("id")
+
+	// Check access
+	inspection, err := database.GetInspectionByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Inspection not found"})
+		return
+	}
+
+	role, _ := c.Get("user_role")
+	userID, _ := c.Get("user_id")
+	
+	if role != models.RoleAdmin && inspection.CreatedByUserID != userID.(string) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		return
+	}
 
 	if err := database.DeleteInspection(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -94,10 +423,18 @@ func DeleteInspection(c *gin.Context) {
 func UploadPhotos(c *gin.Context) {
 	id := c.Param("id")
 
-	// Verify inspection exists
-	_, err := database.GetInspectionByID(id)
+	// Verify inspection exists and user has access
+	inspection, err := database.GetInspectionByID(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Inspection not found"})
+		return
+	}
+
+	role, _ := c.Get("user_role")
+	userID, _ := c.Get("user_id")
+	
+	if role != models.RoleAdmin && inspection.CreatedByUserID != userID.(string) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
 
@@ -169,6 +506,15 @@ func GeneratePDF(c *gin.Context) {
 		return
 	}
 
+	// Check access
+	role, _ := c.Get("user_role")
+	userID, _ := c.Get("user_id")
+	
+	if role != models.RoleAdmin && inspection.CreatedByUserID != userID.(string) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		return
+	}
+
 	// Generate PDF
 	pdfPath, err := pdf.GenerateInspectionPDF(inspection)
 	if err != nil {
@@ -181,4 +527,3 @@ func GeneratePDF(c *gin.Context) {
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=inspection_%s.pdf", id[:8]))
 	c.File(pdfPath)
 }
-

@@ -1,3 +1,35 @@
+// User types
+export type UserRole = "admin" | "user";
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  picture: string;
+  role: UserRole;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by?: string;
+}
+
+export interface LoginResponse {
+  user: User;
+  token: string;
+}
+
+export interface CreateUserRequest {
+  email: string;
+  name: string;
+  role: UserRole;
+}
+
+export interface UpdateUserRequest {
+  name?: string;
+  role?: UserRole;
+  is_active?: boolean;
+}
+
 export interface Inspection {
   id: string;
   created_at: string;
@@ -25,6 +57,9 @@ export interface Inspection {
   boundary_west: string;
   boundary_north: string;
   boundary_south: string;
+  approach_road: string;
+  road_width: string;
+  road_width_unit: string;
 
   // Building Details
   num_floors: string;
@@ -94,6 +129,7 @@ export interface CreateInspectionRequest {
   location: string;
   inspection_date: string;
   person_visited: string;
+  property_address: string;
 }
 
 export interface UpdateInspectionRequest extends Partial<Omit<Inspection, "id" | "created_at" | "updated_at" | "photos">> {}

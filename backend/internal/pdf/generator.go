@@ -94,6 +94,14 @@ func GenerateInspectionPDF(inspection *models.Inspection) (string, error) {
 	tableRow("On or Towards West", inspection.BoundaryWest)
 	tableRow("On or Towards North", inspection.BoundaryNorth)
 	tableRow("On or Towards South", inspection.BoundarySouth)
+	tableRow("Approach Road", inspection.ApproachRoad)
+	
+	// Road width with unit
+	roadWidthValue := inspection.RoadWidth
+	if roadWidthValue != "" && inspection.RoadWidthUnit != "" {
+		roadWidthValue = fmt.Sprintf("%s %s", inspection.RoadWidth, inspection.RoadWidthUnit)
+	}
+	tableRow("Width of Road", roadWidthValue)
 
 	// Property Details Section
 	pdf.SetFont("Arial", "B", 10)

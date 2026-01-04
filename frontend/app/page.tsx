@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Header from "@/components/Header";
 import PhotoUploader from "@/components/PhotoUploader";
 import { inspectionApi } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import { 
   User, 
   MapPin, 
@@ -19,6 +20,9 @@ import {
 
 export default function HomePage() {
   const router = useRouter();
+  const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  
+  // All hooks must be declared before any conditional returns
   const [isLoading, setIsLoading] = useState(false);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | null>(null);
@@ -28,7 +32,24 @@ export default function HomePage() {
     location: "",
     inspection_date: new Date().toISOString().split("T")[0],
     person_visited: "",
+    property_address: "",
   });
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push("/login");
+    }
+  }, [authLoading, isAuthenticated, router]);
+
+  // Show loading while checking auth
+  if (authLoading || !isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-white to-primary-50/30">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+    );
+  }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -181,7 +202,37 @@ export default function HomePage() {
                   <span className="hidden sm:inline">GPS</span>
                 </button>
               </div>
-              {(coordinates || formData.location) && (
+              
+              {/* Google Map Preview */}
+              {coordinates && (
+                <div className="mt-3 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+                  <iframe
+                    src={`https://maps.google.com/maps?q=${coordinates.lat},${coordinates.lng}&z=16&output=embed`}
+                    className="w-full h-[180px] sm:h-[200px]"
+                    style={{ border: 0 }}
+                    loading="lazy"
+                    allowFullScreen
+                    referrerPolicy="no-referrer-when-downgrade"
+                    title="Location Map"
+                  />
+                  <div className="bg-gray-50 px-3 py-2 flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-xs text-gray-500">
+                      📍 {coordinates.lat.toFixed(6)}, {coordinates.lng.toFixed(6)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={openInGoogleMaps}
+                      className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1 font-medium"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Open in Google Maps
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {/* Open in Maps link when no coordinates but has location text */}
+              {!coordinates && formData.location && (
                 <button
                   type="button"
                   onClick={openInGoogleMaps}
@@ -191,6 +242,22 @@ export default function HomePage() {
                   Open in Google Maps
                 </button>
               )}
+            </div>
+
+            {/* Property Address */}
+            <div>
+              <label htmlFor="property_address" className="form-label">
+                <MapPin className="w-4 h-4 inline mr-2 text-primary-600" />
+                Property Address
+              </label>
+              <textarea
+                id="property_address"
+                name="property_address"
+                value={formData.property_address}
+                onChange={(e) => setFormData(prev => ({ ...prev, property_address: e.target.value }))}
+                placeholder="Enter complete property address with access road"
+                className="input-field min-h-[80px]"
+              />
             </div>
 
             {/* Date & Person Visited - Side by side */}

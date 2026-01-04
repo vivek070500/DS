@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Header from "@/components/Header";
 import { inspectionApi } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import type { Inspection } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 import {
@@ -27,14 +28,23 @@ export default function PreviewPage() {
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isDownloading, setIsDownloading] = useState(false);
   const [inspection, setInspection] = useState<Inspection | null>(null);
 
   useEffect(() => {
-    loadInspection();
-  }, [id]);
+    if (!authLoading && !isAuthenticated) {
+      router.push("/login");
+    }
+  }, [authLoading, isAuthenticated, router]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadInspection();
+    }
+  }, [id, isAuthenticated]);
 
   const loadInspection = async () => {
     try {
@@ -66,9 +76,9 @@ export default function PreviewPage() {
     router.push(`/form/${id}`);
   };
 
-  if (isLoading) {
+  if (authLoading || isLoading || !isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-white to-primary-50/30">
         <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
       </div>
     );

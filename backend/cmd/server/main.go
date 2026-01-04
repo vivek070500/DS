@@ -23,7 +23,7 @@ func main() {
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:3000"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 	}))
@@ -34,19 +34,40 @@ func main() {
 	// API Routes
 	api := r.Group("/api")
 	{
-		// Inspection routes
-		api.POST("/inspections", handlers.CreateInspection)
-		api.GET("/inspections", handlers.GetAllInspections)
-		api.GET("/inspections/:id", handlers.GetInspection)
-		api.PUT("/inspections/:id", handlers.UpdateInspection)
-		api.DELETE("/inspections/:id", handlers.DeleteInspection)
+		// Public auth routes
+		api.POST("/auth/google", handlers.GoogleLogin)
 
-		// Photo routes
-		api.POST("/inspections/:id/photos", handlers.UploadPhotos)
-		api.DELETE("/inspections/:id/photos/:photoId", handlers.DeletePhoto)
+		// Protected routes (require authentication)
+		protected := api.Group("")
+		protected.Use(handlers.AuthMiddleware())
+		{
+			// User info
+			protected.GET("/auth/me", handlers.GetCurrentUser)
 
-		// PDF generation
-		api.GET("/inspections/:id/pdf", handlers.GeneratePDF)
+			// Inspection routes
+			protected.POST("/inspections", handlers.CreateInspection)
+			protected.GET("/inspections", handlers.GetAllInspections)
+			protected.GET("/inspections/:id", handlers.GetInspection)
+			protected.PUT("/inspections/:id", handlers.UpdateInspection)
+			protected.DELETE("/inspections/:id", handlers.DeleteInspection)
+
+			// Photo routes
+			protected.POST("/inspections/:id/photos", handlers.UploadPhotos)
+			protected.DELETE("/inspections/:id/photos/:photoId", handlers.DeletePhoto)
+
+			// PDF generation
+			protected.GET("/inspections/:id/pdf", handlers.GeneratePDF)
+
+			// Admin-only routes
+			admin := protected.Group("")
+			admin.Use(handlers.AdminMiddleware())
+			{
+				admin.GET("/users", handlers.GetAllUsers)
+				admin.POST("/users", handlers.CreateUser)
+				admin.PUT("/users/:id", handlers.UpdateUser)
+				admin.DELETE("/users/:id", handlers.DeleteUser)
+			}
+		}
 	}
 
 	// Start server
@@ -55,4 +76,3 @@ func main() {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }
-

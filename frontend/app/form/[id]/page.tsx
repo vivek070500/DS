@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Header from "@/components/Header";
 import { inspectionApi } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import type { Inspection, UpdateInspectionRequest } from "@/lib/types";
 import {
   CASE_TYPES,
@@ -57,6 +58,7 @@ export default function FormPage() {
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
 
   const [activeTab, setActiveTab] = useState<TabKey>("initial");
   const [isLoading, setIsLoading] = useState(true);
@@ -65,8 +67,16 @@ export default function FormPage() {
   const [formData, setFormData] = useState<UpdateInspectionRequest>({});
 
   useEffect(() => {
-    loadInspection();
-  }, [id]);
+    if (!authLoading && !isAuthenticated) {
+      router.push("/login");
+    }
+  }, [authLoading, isAuthenticated, router]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadInspection();
+    }
+  }, [id, isAuthenticated]);
 
   const loadInspection = async () => {
     try {
@@ -142,9 +152,9 @@ export default function FormPage() {
     }
   };
 
-  if (isLoading) {
+  if (authLoading || isLoading || !isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-white to-primary-50/30">
         <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
       </div>
     );
@@ -597,6 +607,72 @@ export default function FormPage() {
                     className="input-field"
                     placeholder="What is on the south side?"
                   />
+                </div>
+              </div>
+
+              {/* Approach Road */}
+              <div>
+                <label className="form-label">Approach Road</label>
+                <div className="flex gap-4">
+                  {["Yes", "No"].map((option) => (
+                    <label
+                      key={option}
+                      className={cn(
+                        "flex items-center gap-2 px-6 py-3 rounded-lg border cursor-pointer transition-all duration-200",
+                        formData.approach_road === option
+                          ? "border-primary-500 bg-primary-50 text-primary-700"
+                          : "border-gray-200 hover:border-primary-300"
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name="approach_road"
+                        value={option}
+                        checked={formData.approach_road === option}
+                        onChange={handleInputChange}
+                        className="sr-only"
+                      />
+                      <span className="font-medium">{option}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Width of Road */}
+              <div>
+                <label className="form-label">Width of Road</label>
+                <div className="flex gap-3">
+                  <input
+                    type="text"
+                    name="road_width"
+                    value={formData.road_width || ""}
+                    onChange={handleInputChange}
+                    className="input-field flex-1"
+                    placeholder="Enter road width"
+                  />
+                  <div className="flex gap-2">
+                    {["Meters", "Feet"].map((unit) => (
+                      <label
+                        key={unit}
+                        className={cn(
+                          "flex items-center gap-2 px-4 py-3 rounded-lg border cursor-pointer transition-all duration-200",
+                          formData.road_width_unit === unit
+                            ? "border-primary-500 bg-primary-50 text-primary-700"
+                            : "border-gray-200 hover:border-primary-300"
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name="road_width_unit"
+                          value={unit}
+                          checked={formData.road_width_unit === unit}
+                          onChange={handleInputChange}
+                          className="sr-only"
+                        />
+                        <span className="text-sm font-medium">{unit}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
