@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"time"
 
@@ -12,9 +13,28 @@ import (
 )
 
 var DB *sql.DB
+var isPostgres bool
 
 // Initial admin email
 const InitialAdminEmail = "vivektarachandani0705@gmail.com"
+
+// convertPlaceholders converts ? placeholders to $1, $2, etc. for PostgreSQL
+func convertPlaceholders(query string) string {
+	if !isPostgres {
+		return query
+	}
+	result := ""
+	paramNum := 1
+	for _, char := range query {
+		if char == '?' {
+			result += fmt.Sprintf("$%d", paramNum)
+			paramNum++
+		} else {
+			result += string(char)
+		}
+	}
+	return result
+}
 
 func InitDB(dbPath string) error {
 	var err error
@@ -192,9 +212,10 @@ func CreateInspection(req models.CreateInspectionRequest, userID string) (*model
 	id := uuid.New().String()
 	now := time.Now()
 
-	_, err := DB.Exec(`
+	query := convertPlaceholders(`
 		INSERT INTO inspections (id, created_at, updated_at, employee_name, location, inspection_date, person_visited, property_address, created_by_user_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	_, err := DB.Exec(query,
 		id, now, now, req.EmployeeName, req.Location, req.InspectionDate, req.PersonVisited, req.PropertyAddress, userID)
 	if err != nil {
 		return nil, err
@@ -208,7 +229,7 @@ func GetInspectionByID(id string) (*models.Inspection, error) {
 	var i models.Inspection
 	var flatType sql.NullString
 
-	err := DB.QueryRow(`
+	query := convertPlaceholders(`
 		SELECT id, created_at, updated_at, COALESCE(status, 'draft'),
 			COALESCE(employee_name, ''), COALESCE(location, ''), COALESCE(inspection_date, ''), COALESCE(person_visited, ''),
 			COALESCE(type_of_case, ''), COALESCE(bank_name, ''), COALESCE(applicant_name, ''), COALESCE(project_name, ''), COALESCE(property_address, ''),
@@ -224,9 +245,10 @@ func GetInspectionByID(id string) (*models.Inspection, error) {
 			COALESCE(flooring_type, ''), COALESCE(kitchen_platform, ''), COALESCE(wall_tiles_kitchen, ''), COALESCE(wall_tiles_toilet, ''),
 			COALESCE(windows_type, ''), COALESCE(ms_grill, ''),
 			COALESCE(rcc_work, ''), COALESCE(brick_work, ''), COALESCE(internal_plaster, ''), COALESCE(external_plaster, ''), COALESCE(flooring_work, ''),
-			COALESCE(window_door_fitting, ''), COALESCE(painting_finishing, ''), COALESCE(labours_at_site, 0), COALESCE(num_labours, ''),
-			COALESCE(construction_material_at_site, 0)
-		FROM inspections WHERE id = ?`, id).Scan(
+			COALESCE(window_door_fitting, ''), COALESCE(painting_finishing, ''), labours_at_site, COALESCE(num_labours, ''),
+			construction_material_at_site
+		FROM inspections WHERE id = ?`)
+	err := DB.QueryRow(query, id).Scan(
 		&i.ID, &i.CreatedAt, &i.UpdatedAt, &i.Status,
 		&i.EmployeeName, &i.Location, &i.InspectionDate, &i.PersonVisited,
 		&i.TypeOfCase, &i.BankName, &i.ApplicantName, &i.ProjectName, &i.PropertyAddress,
@@ -526,7 +548,7 @@ func UpdateInspection(id string, req models.UpdateInspectionRequest) (*models.In
 	query += " WHERE id = ?"
 	args = append(args, id)
 
-	_, err := DB.Exec(query, args...)
+	_, err := DB.Exec(convertPlaceholders(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -536,7 +558,7 @@ func UpdateInspection(id string, req models.UpdateInspectionRequest) (*models.In
 
 // DeleteInspection deletes an inspection by ID
 func DeleteInspection(id string) error {
-	_, err := DB.Exec("DELETE FROM inspections WHERE id = ?", id)
+	_, err := DB.Exec(convertPlaceholders("DELETE FROM inspections WHERE id = ?"), id)
 	return err
 }
 
@@ -545,9 +567,10 @@ func CreatePhoto(photo models.Photo) (*models.Photo, error) {
 	id := uuid.New().String()
 	now := time.Now()
 
-	_, err := DB.Exec(`
+	query := convertPlaceholders(`
 		INSERT INTO photos (id, inspection_id, file_path, file_name, photo_type, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?)`)
+	_, err := DB.Exec(query,
 		id, photo.InspectionID, photo.FilePath, photo.FileName, photo.PhotoType, now)
 	if err != nil {
 		return nil, err
@@ -560,9 +583,10 @@ func CreatePhoto(photo models.Photo) (*models.Photo, error) {
 
 // GetPhotosByInspectionID retrieves all photos for an inspection
 func GetPhotosByInspectionID(inspectionID string) ([]models.Photo, error) {
-	rows, err := DB.Query(`
+	query := convertPlaceholders(`
 		SELECT id, inspection_id, file_path, file_name, photo_type, created_at
-		FROM photos WHERE inspection_id = ?`, inspectionID)
+		FROM photos WHERE inspection_id = ?`)
+	rows, err := DB.Query(query, inspectionID)
 	if err != nil {
 		return nil, err
 	}
@@ -582,7 +606,7 @@ func GetPhotosByInspectionID(inspectionID string) ([]models.Photo, error) {
 
 // DeletePhoto deletes a photo by ID
 func DeletePhoto(id string) error {
-	_, err := DB.Exec("DELETE FROM photos WHERE id = ?", id)
+	_, err := DB.Exec(convertPlaceholders("DELETE FROM photos WHERE id = ?"), id)
 	return err
 }
 
@@ -594,9 +618,10 @@ func GetUserByEmail(email string) (*models.User, error) {
 	var createdBy sql.NullString
 	var picture sql.NullString
 
-	err := DB.QueryRow(`
-		SELECT id, email, name, COALESCE(picture, ''), role, is_active, created_at, updated_at, created_by
-		FROM users WHERE email = ?`, email).Scan(
+	query := convertPlaceholders(`SELECT id, email, name, COALESCE(picture, ''), role, is_active, created_at, updated_at, created_by
+		FROM users WHERE email = ?`)
+	
+	err := DB.QueryRow(query, email).Scan(
 		&u.ID, &u.Email, &u.Name, &picture, &u.Role, &u.IsActive, &u.CreatedAt, &u.UpdatedAt, &createdBy)
 	if err != nil {
 		return nil, err
@@ -618,9 +643,10 @@ func GetUserByID(id string) (*models.User, error) {
 	var createdBy sql.NullString
 	var picture sql.NullString
 
-	err := DB.QueryRow(`
-		SELECT id, email, name, COALESCE(picture, ''), role, is_active, created_at, updated_at, created_by
-		FROM users WHERE id = ?`, id).Scan(
+	query := convertPlaceholders(`SELECT id, email, name, COALESCE(picture, ''), role, is_active, created_at, updated_at, created_by
+		FROM users WHERE id = ?`)
+	
+	err := DB.QueryRow(query, id).Scan(
 		&u.ID, &u.Email, &u.Name, &picture, &u.Role, &u.IsActive, &u.CreatedAt, &u.UpdatedAt, &createdBy)
 	if err != nil {
 		return nil, err
@@ -669,9 +695,10 @@ func CreateUser(req models.CreateUserRequest, createdBy string) (*models.User, e
 	id := uuid.New().String()
 	now := time.Now()
 
-	_, err := DB.Exec(`
+	query := convertPlaceholders(`
 		INSERT INTO users (id, email, name, role, is_active, created_at, updated_at, created_by)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+	_, err := DB.Exec(query,
 		id, req.Email, req.Name, req.Role, true, now, now, createdBy)
 	if err != nil {
 		return nil, err
@@ -701,7 +728,7 @@ func UpdateUser(id string, req models.UpdateUserRequest) (*models.User, error) {
 	query += " WHERE id = ?"
 	args = append(args, id)
 
-	_, err := DB.Exec(query, args...)
+	_, err := DB.Exec(convertPlaceholders(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -711,23 +738,25 @@ func UpdateUser(id string, req models.UpdateUserRequest) (*models.User, error) {
 
 // UpdateUserPicture updates user's profile picture
 func UpdateUserPicture(id, picture string) error {
-	_, err := DB.Exec("UPDATE users SET picture = ?, updated_at = ? WHERE id = ?", picture, time.Now(), id)
+	query := convertPlaceholders("UPDATE users SET picture = ?, updated_at = ? WHERE id = ?")
+	_, err := DB.Exec(query, picture, time.Now(), id)
 	return err
 }
 
 // DeleteUser deletes a user
 func DeleteUser(id string) error {
-	_, err := DB.Exec("DELETE FROM users WHERE id = ?", id)
+	_, err := DB.Exec(convertPlaceholders("DELETE FROM users WHERE id = ?"), id)
 	return err
 }
 
 // GetInspectionsByUserID retrieves all inspections created by a specific user
 func GetInspectionsByUserID(userID string) ([]models.Inspection, error) {
-	rows, err := DB.Query(`
+	query := convertPlaceholders(`
 		SELECT id, created_at, updated_at, COALESCE(status, 'draft'), 
 			COALESCE(employee_name, ''), COALESCE(location, ''), COALESCE(inspection_date, ''), COALESCE(person_visited, ''),
 			COALESCE(type_of_case, ''), COALESCE(bank_name, ''), COALESCE(applicant_name, ''), COALESCE(project_name, '')
-		FROM inspections WHERE created_by_user_id = ? ORDER BY created_at DESC`, userID)
+		FROM inspections WHERE created_by_user_id = ? ORDER BY created_at DESC`)
+	rows, err := DB.Query(query, userID)
 	if err != nil {
 		return nil, err
 	}

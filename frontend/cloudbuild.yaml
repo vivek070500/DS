@@ -19,6 +19,6 @@ images:
   - 'gcr.io/$PROJECT_ID/ds-enterprises-frontend'
 
 substitutions:
-  _NEXT_PUBLIC_API_URL: 'http://localhost:8080'
-  _NEXT_PUBLIC_GOOGLE_CLIENT_ID: ''
+  _NEXT_PUBLIC_API_URL: 'https://ds-enterprises-backend-478178277526.asia-south1.run.app'
+  _NEXT_PUBLIC_GOOGLE_CLIENT_ID: '478178277526-is7n91uahahgukji04hltb03gson6le5.apps.googleusercontent.com'
 

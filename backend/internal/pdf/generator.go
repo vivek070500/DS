@@ -4,12 +4,34 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"unicode"
 
 	"ds-enterprises/internal/models"
 
 	"github.com/jung-kurt/gofpdf"
 )
+
+// sanitizeText removes non-ASCII characters and keeps only printable ASCII
+// This is needed because gofpdf doesn't support Unicode fonts by default
+func sanitizeText(s string) string {
+	// Remove non-ASCII characters but keep basic punctuation and spaces
+	var result strings.Builder
+	for _, r := range s {
+		if r <= 127 && unicode.IsPrint(r) {
+			result.WriteRune(r)
+		} else if r == '\n' || r == '\t' {
+			result.WriteRune(r)
+		}
+		// Skip non-ASCII characters (Hindi, etc.)
+	}
+	
+	// Clean up multiple spaces
+	re := regexp.MustCompile(`\s+`)
+	cleaned := re.ReplaceAllString(result.String(), " ")
+	return strings.TrimSpace(cleaned)
+}
 
 // GenerateInspectionPDF generates a PDF matching the D.S. Enterprises form
 func GenerateInspectionPDF(inspection *models.Inspection) (string, error) {
@@ -69,10 +91,10 @@ func GenerateInspectionPDF(inspection *models.Inspection) (string, error) {
 	tableRow("Name of Applicant/s", inspection.ApplicantName)
 	tableRow("Name of Project", inspection.ProjectName)
 
-	// Multi-line address
+	// Multi-line address (sanitized to remove non-ASCII characters)
 	pdf.SetFont("Arial", "", 9)
 	pdf.CellFormat(60, 7, "Property Address with Access Road", "1", 0, "L", false, 0, "")
-	pdf.MultiCell(130, 7, inspection.PropertyAddress, "1", "L", false)
+	pdf.MultiCell(130, 7, sanitizeText(inspection.PropertyAddress), "1", "L", false)
 
 	tableRow("Landmark", inspection.Landmark)
 	
@@ -202,8 +224,9 @@ func GenerateInspectionPDF(inspection *models.Inspection) (string, error) {
 	// Footer
 	pdf.Ln(10)
 	pdf.SetFont("Arial", "B", 9)
-	pdf.CellFormat(95, 7, fmt.Sprintf("Inspected By: %s", inspection.EmployeeName), "", 0, "L", false, 0, "")
-	pdf.CellFormat(95, 7, fmt.Sprintf("Location: %s", inspection.Location), "", 1, "R", false, 0, "")
+	pdf.CellFormat(95, 7, fmt.Sprintf("Inspected By: %s", sanitizeText(inspection.EmployeeName)), "", 0, "L", false, 0, "")
+	// Sanitize location to remove Hindi/Unicode characters that gofpdf can't render
+	pdf.CellFormat(95, 7, fmt.Sprintf("Location: %s", sanitizeText(inspection.Location)), "", 1, "R", false, 0, "")
 
 	// Save PDF
 	pdfDir := "generated_pdfs"

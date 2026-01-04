@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Header from "@/components/Header";
-import { inspectionApi } from "@/lib/api";
+import { inspectionApi, API_BASE_URL } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import type { Inspection } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
@@ -63,8 +63,20 @@ export default function PreviewPage() {
   const handleDownload = async () => {
     setIsDownloading(true);
     try {
-      const pdfUrl = inspectionApi.getPdfUrl(id);
-      window.open(pdfUrl, "_blank");
+      // Download PDF with authentication
+      const blob = await inspectionApi.downloadPdf(id);
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `inspection_${id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error("Error downloading PDF:", error);
       alert("Failed to download PDF");
@@ -348,15 +360,52 @@ export default function PreviewPage() {
                 Site Photos
               </h3>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                {inspection.photos.map((photo) => (
-                  <div key={photo.id} className="aspect-square rounded-xl overflow-hidden bg-gray-100">
-                    <img
-                      src={`http://localhost:8080${photo.file_path}`}
-                      alt={photo.file_name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                ))}
+                {inspection.photos.map((photo) => {
+                  // If file_path is a full URL (GCS), use it directly; otherwise prepend API_BASE_URL
+                  const photoUrl = photo.file_path.startsWith('http') 
+                    ? photo.file_path 
+                    : `${API_BASE_URL}${photo.file_path}`;
+                  
+                  const handlePhotoDownload = async (e: React.MouseEvent) => {
+                    e.preventDefault();
+                    try {
+                      const response = await fetch(photoUrl);
+                      const blob = await response.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.download = photo.file_name || 'photo.jpg';
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                      window.URL.revokeObjectURL(url);
+                    } catch (error) {
+                      console.error('Download failed:', error);
+                      // Fallback: open in new tab
+                      window.open(photoUrl, '_blank');
+                    }
+                  };
+                  
+                  return (
+                    <div key={photo.id} className="relative group">
+                      <div className="aspect-square rounded-xl overflow-hidden bg-gray-100">
+                        <img
+                          src={photoUrl}
+                          alt={photo.file_name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      {/* Download button overlay */}
+                      <button
+                        onClick={handlePhotoDownload}
+                        className="absolute bottom-2 right-2 p-2 bg-white/90 hover:bg-white rounded-lg shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                        title="Download photo"
+                      >
+                        <Download className="w-4 h-4 text-gray-700" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

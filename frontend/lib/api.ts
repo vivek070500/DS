@@ -9,7 +9,7 @@ import type {
   UpdateUserRequest
 } from "./types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 const TOKEN_KEY = "ds_auth_token";
 
 const api = axios.create({

@@ -68,10 +68,10 @@ export default function HomePage() {
         const { latitude, longitude } = position.coords;
         setCoordinates({ lat: latitude, lng: longitude });
         
-        // Try to get address from coordinates using reverse geocoding
+        // Try to get address from coordinates using reverse geocoding (always in English)
         try {
           const response = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&accept-language=en`
           );
           const data = await response.json();
           if (data.display_name) {

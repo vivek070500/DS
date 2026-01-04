@@ -41,6 +41,7 @@ func InitPostgresDB() error {
 		log.Printf("Warning: Could not seed initial admin: %v", err)
 	}
 
+	isPostgres = true
 	log.Println("PostgreSQL database initialized successfully")
 	return nil
 }

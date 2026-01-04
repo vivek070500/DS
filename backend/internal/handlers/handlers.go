@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"ds-enterprises/internal/database"
 	"ds-enterprises/internal/models"
 	"ds-enterprises/internal/pdf"
+	"ds-enterprises/internal/storage"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -301,6 +303,7 @@ func CreateInspection(c *gin.Context) {
 
 	inspection, err := database.CreateInspection(req, userIDStr)
 	if err != nil {
+		log.Printf("CreateInspection error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -438,7 +441,7 @@ func UploadPhotos(c *gin.Context) {
 		return
 	}
 
-	// Create upload directory
+	// Create local upload directory (temporary for GCS upload)
 	uploadDir := filepath.Join("uploads", id)
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create upload directory"})
@@ -458,23 +461,44 @@ func UploadPhotos(c *gin.Context) {
 		// Generate unique filename
 		ext := filepath.Ext(file.Filename)
 		newFileName := uuid.New().String() + ext
-		filePath := filepath.Join(uploadDir, newFileName)
+		localPath := filepath.Join(uploadDir, newFileName)
 
-		// Save file
-		if err := c.SaveUploadedFile(file, filePath); err != nil {
+		// Save file locally first
+		if err := c.SaveUploadedFile(file, localPath); err != nil {
+			log.Printf("Failed to save file locally: %v", err)
 			continue
+		}
+
+		// Determine the final file path (GCS URL or local path)
+		var finalPath string
+		if storage.IsGCSEnabled() {
+			// Upload to GCS
+			gcsPath := fmt.Sprintf("photos/%s/%s", id, newFileName)
+			gcsURL, err := storage.UploadFile(localPath, gcsPath)
+			if err != nil {
+				log.Printf("Failed to upload to GCS: %v", err)
+				// Fall back to local path
+				finalPath = "/" + localPath
+			} else {
+				finalPath = gcsURL
+				// Remove local file after successful GCS upload
+				os.Remove(localPath)
+			}
+		} else {
+			finalPath = "/" + localPath
 		}
 
 		// Create photo record
 		photo := models.Photo{
 			InspectionID: id,
-			FilePath:     "/" + filePath,
+			FilePath:     finalPath,
 			FileName:     file.Filename,
 			PhotoType:    "site",
 		}
 
 		savedPhoto, err := database.CreatePhoto(photo)
 		if err != nil {
+			log.Printf("Failed to create photo record: %v", err)
 			continue
 		}
 
