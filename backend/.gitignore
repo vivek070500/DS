@@ -20,6 +20,5 @@ generated_pdfs/
 # OS
 .DS_Store
 
-# Go
-go.sum
+# Go (go.sum should be committed)
 

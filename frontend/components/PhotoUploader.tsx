@@ -278,7 +278,7 @@ export default function PhotoUploader({
         {/* Camera Capture */}
         <button
           type="button"
-          onClick={startCamera}
+          onClick={() => startCamera()}
           className="border-2 border-dashed border-gray-200 hover:border-green-400 hover:bg-green-50/50 rounded-xl p-6 text-center cursor-pointer transition-all duration-300"
         >
           <div className="flex flex-col items-center gap-2">

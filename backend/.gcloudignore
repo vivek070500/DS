@@ -1,0 +1,26 @@
+# This file specifies files that are *not* uploaded to Google Cloud
+# using gcloud. It follows the same syntax as .gitignore.
+
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Database files
+*.db
+
+# Runtime files
+uploads/
+generated_pdfs/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# Git
+.git/
+.gitignore

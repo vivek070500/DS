@@ -2,9 +2,11 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"ds-enterprises/internal/database"
 	"ds-enterprises/internal/handlers"
+	"ds-enterprises/internal/storage"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -12,28 +14,60 @@ import (
 
 func main() {
 	// Initialize database
-	if err := database.InitDB("ds_enterprises.db"); err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+	// Use PostgreSQL if DATABASE_URL is set, otherwise use SQLite
+	if os.Getenv("DATABASE_URL") != "" {
+		log.Println("Using PostgreSQL database")
+		if err := database.InitPostgresDB(); err != nil {
+			log.Fatalf("Failed to initialize PostgreSQL: %v", err)
+		}
+	} else {
+		log.Println("Using SQLite database")
+		if err := database.InitDB("ds_enterprises.db"); err != nil {
+			log.Fatalf("Failed to initialize database: %v", err)
+		}
 	}
+
+	// Initialize Google Cloud Storage (optional)
+	if err := storage.InitGCS(); err != nil {
+		log.Printf("Warning: GCS initialization failed: %v", err)
+	}
+	defer storage.Close()
 
 	// Create Gin router
 	r := gin.Default()
 
+	// Get allowed origins from environment or use defaults
+	allowedOrigins := []string{"http://localhost:3000"}
+	if frontendURL := os.Getenv("FRONTEND_URL"); frontendURL != "" {
+		allowedOrigins = append(allowedOrigins, frontendURL)
+	}
+	// Allow Cloud Run URLs
+	allowedOrigins = append(allowedOrigins, "https://*.run.app")
+
 	// Configure CORS
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowOrigins:     allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
+		AllowOriginFunc: func(origin string) bool {
+			// Allow any Cloud Run URL
+			return true
+		},
 	}))
 
-	// Serve uploaded files
+	// Serve uploaded files (for local development)
 	r.Static("/uploads", "./uploads")
 
 	// API Routes
 	api := r.Group("/api")
 	{
+		// Health check
+		api.GET("/health", func(c *gin.Context) {
+			c.JSON(200, gin.H{"status": "ok"})
+		})
+
 		// Public auth routes
 		api.POST("/auth/google", handlers.GoogleLogin)
 
@@ -70,9 +104,14 @@ func main() {
 		}
 	}
 
-	// Start server
-	log.Println("Starting server on http://localhost:8080")
-	if err := r.Run(":8080"); err != nil {
+	// Get port from environment or use default
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	log.Printf("Starting server on port %s", port)
+	if err := r.Run(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }

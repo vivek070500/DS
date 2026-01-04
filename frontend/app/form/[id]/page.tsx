@@ -32,6 +32,8 @@ import {
   User,
   Calendar,
   UserCheck,
+  Navigation,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -65,6 +67,8 @@ export default function FormPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [inspection, setInspection] = useState<Inspection | null>(null);
   const [formData, setFormData] = useState<UpdateInspectionRequest>({});
+  const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | null>(null);
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -89,6 +93,51 @@ export default function FormPage() {
       router.push("/");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const getCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
+
+    setIsGettingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        setCoordinates({ lat: latitude, lng: longitude });
+        
+        // Try to get address from coordinates using reverse geocoding
+        try {
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+          );
+          const data = await response.json();
+          if (data.display_name) {
+            setFormData((prev) => ({ ...prev, location: data.display_name }));
+          } else {
+            setFormData((prev) => ({ ...prev, location: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}` }));
+          }
+        } catch {
+          setFormData((prev) => ({ ...prev, location: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}` }));
+        }
+        setIsGettingLocation(false);
+      },
+      (error) => {
+        setIsGettingLocation(false);
+        alert("Unable to get your location. Please enter it manually.");
+        console.error(error);
+      },
+      { enableHighAccuracy: true }
+    );
+  };
+
+  const openInGoogleMaps = () => {
+    if (coordinates) {
+      window.open(`https://www.google.com/maps?q=${coordinates.lat},${coordinates.lng}`, "_blank");
+    } else if (formData.location) {
+      window.open(`https://www.google.com/maps/search/${encodeURIComponent(formData.location)}`, "_blank");
     }
   };
 
@@ -259,14 +308,64 @@ export default function FormPage() {
                   <MapPin className="w-4 h-4 inline mr-2 text-primary-600" />
                   Location
                 </label>
-                <input
-                  type="text"
-                  name="location"
-                  value={formData.location || ""}
-                  onChange={handleInputChange}
-                  className="input-field"
-                  placeholder="Enter property location"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    name="location"
+                    value={formData.location || ""}
+                    onChange={handleInputChange}
+                    className="input-field flex-1"
+                    placeholder="Enter property location"
+                  />
+                  <button
+                    type="button"
+                    onClick={getCurrentLocation}
+                    disabled={isGettingLocation}
+                    className="px-4 py-3 bg-primary-100 hover:bg-primary-200 text-primary-700 rounded-xl transition-all duration-200 flex items-center gap-2 whitespace-nowrap"
+                    title="Get current GPS location"
+                  >
+                    {isGettingLocation ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Navigation className="w-5 h-5" />
+                    )}
+                    <span className="hidden sm:inline">GPS</span>
+                  </button>
+                </div>
+                
+                {/* Google Map Preview - Show for coordinates OR saved location */}
+                {(coordinates || formData.location) && (
+                  <div className="mt-3 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+                    <iframe
+                      src={coordinates 
+                        ? `https://maps.google.com/maps?q=${coordinates.lat},${coordinates.lng}&z=16&output=embed`
+                        : `https://maps.google.com/maps?q=${encodeURIComponent(formData.location || '')}&z=16&output=embed`
+                      }
+                      className="w-full h-[180px] sm:h-[200px]"
+                      style={{ border: 0 }}
+                      loading="lazy"
+                      allowFullScreen
+                      referrerPolicy="no-referrer-when-downgrade"
+                      title="Location Map"
+                    />
+                    <div className="bg-gray-50 px-3 py-2 flex items-center justify-between flex-wrap gap-2">
+                      <span className="text-xs text-gray-500 flex-1 truncate">
+                        📍 {coordinates 
+                          ? `${coordinates.lat.toFixed(6)}, ${coordinates.lng.toFixed(6)}`
+                          : formData.location
+                        }
+                      </span>
+                      <button
+                        type="button"
+                        onClick={openInGoogleMaps}
+                        className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1 font-medium whitespace-nowrap"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        Open in Google Maps
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -280,6 +379,20 @@ export default function FormPage() {
                   value={formData.inspection_date || ""}
                   onChange={handleInputChange}
                   className="input-field"
+                />
+              </div>
+
+              <div>
+                <label className="form-label">
+                  <MapPin className="w-4 h-4 inline mr-2 text-primary-600" />
+                  Property Address
+                </label>
+                <textarea
+                  name="property_address"
+                  value={formData.property_address || ""}
+                  onChange={handleInputChange}
+                  placeholder="Enter complete property address"
+                  className="input-field min-h-[80px]"
                 />
               </div>
             </div>

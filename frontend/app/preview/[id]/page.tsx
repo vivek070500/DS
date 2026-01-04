@@ -22,6 +22,7 @@ import {
   DollarSign,
   Wrench,
   Image,
+  ExternalLink,
 } from "lucide-react";
 
 export default function PreviewPage() {
@@ -184,6 +185,41 @@ export default function PreviewPage() {
               </div>
             </div>
           </div>
+
+          {/* Google Map - Show inspection location */}
+          {inspection.location && (
+            <div className="card p-6">
+              <h3 className="section-title">
+                <MapPin className="w-5 h-5 text-primary-600" />
+                Inspection Location Map
+              </h3>
+              <div className="rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+                <iframe
+                  src={`https://maps.google.com/maps?q=${encodeURIComponent(inspection.location)}&z=16&output=embed`}
+                  className="w-full h-[250px] sm:h-[300px]"
+                  style={{ border: 0 }}
+                  loading="lazy"
+                  allowFullScreen
+                  referrerPolicy="no-referrer-when-downgrade"
+                  title="Inspection Location Map"
+                />
+                <div className="bg-gray-50 px-4 py-3 flex items-center justify-between flex-wrap gap-2">
+                  <span className="text-sm text-gray-600 flex-1">
+                    📍 {inspection.location}
+                  </span>
+                  <a
+                    href={`https://www.google.com/maps/search/${encodeURIComponent(inspection.location)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1 font-medium"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Open in Google Maps
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Basic Info */}
           <div className="card p-6">
