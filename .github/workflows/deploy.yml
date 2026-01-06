@@ -1,0 +1,146 @@
+name: Build and Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  PROJECT_ID: ds-enterprises-483308
+  REGION: asia-south1
+  BACKEND_SERVICE: ds-enterprises-backend
+  FRONTEND_SERVICE: ds-enterprises-frontend
+  GCS_BUCKET_NAME: ds-enterprises-uploads-483308
+
+jobs:
+  # Build job runs on all pushes and PRs
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build Backend
+        working-directory: ./backend
+        run: |
+          go mod download
+          go build -v ./...
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './frontend/package-lock.json'
+
+      - name: Build Frontend
+        working-directory: ./frontend
+        run: |
+          npm ci
+          npm run build
+
+  # Deploy job only runs when merged to main
+  deploy:
+    name: Deploy to Cloud Run
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Google Auth
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker --quiet
+
+      # Deploy Backend
+      - name: Build and Push Backend Image
+        working-directory: ./backend
+        run: |
+          docker build -t gcr.io/${{ env.PROJECT_ID }}/${{ env.BACKEND_SERVICE }}:${{ github.sha }} .
+          docker build -t gcr.io/${{ env.PROJECT_ID }}/${{ env.BACKEND_SERVICE }}:latest .
+          docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.BACKEND_SERVICE }}:${{ github.sha }}
+          docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.BACKEND_SERVICE }}:latest
+
+      - name: Deploy Backend to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.BACKEND_SERVICE }} \
+            --image gcr.io/${{ env.PROJECT_ID }}/${{ env.BACKEND_SERVICE }}:${{ github.sha }} \
+            --platform managed \
+            --region ${{ env.REGION }} \
+            --allow-unauthenticated \
+            --set-env-vars "DATABASE_URL=${{ secrets.DATABASE_URL }}" \
+            --set-env-vars "GCS_BUCKET_NAME=${{ env.GCS_BUCKET_NAME }}" \
+            --set-env-vars "JWT_SECRET=${{ secrets.JWT_SECRET }}" \
+            --set-env-vars "FRONTEND_URL=https://${{ env.FRONTEND_SERVICE }}-478178277526.${{ env.REGION }}.run.app" \
+            --add-cloudsql-instances ${{ env.PROJECT_ID }}:${{ env.REGION }}:ds-enterprises-db \
+            --memory 512Mi \
+            --cpu 1 \
+            --min-instances 0 \
+            --max-instances 10
+
+      - name: Get Backend URL
+        id: backend-url
+        run: |
+          BACKEND_URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} --region=${{ env.REGION }} --format="value(status.url)")
+          echo "url=$BACKEND_URL" >> $GITHUB_OUTPUT
+
+      # Deploy Frontend
+      - name: Build and Push Frontend Image
+        working-directory: ./frontend
+        run: |
+          docker build \
+            --build-arg NEXT_PUBLIC_API_URL=${{ steps.backend-url.outputs.url }} \
+            --build-arg NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
+            -t gcr.io/${{ env.PROJECT_ID }}/${{ env.FRONTEND_SERVICE }}:${{ github.sha }} .
+          docker build \
+            --build-arg NEXT_PUBLIC_API_URL=${{ steps.backend-url.outputs.url }} \
+            --build-arg NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
+            -t gcr.io/${{ env.PROJECT_ID }}/${{ env.FRONTEND_SERVICE }}:latest .
+          docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.FRONTEND_SERVICE }}:${{ github.sha }}
+          docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.FRONTEND_SERVICE }}:latest
+
+      - name: Deploy Frontend to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.FRONTEND_SERVICE }} \
+            --image gcr.io/${{ env.PROJECT_ID }}/${{ env.FRONTEND_SERVICE }}:${{ github.sha }} \
+            --platform managed \
+            --region ${{ env.REGION }} \
+            --allow-unauthenticated \
+            --memory 512Mi \
+            --cpu 1 \
+            --min-instances 0 \
+            --max-instances 10
+
+      - name: Get Deployment URLs
+        run: |
+          echo "🚀 Deployment Complete!"
+          echo "Backend URL: ${{ steps.backend-url.outputs.url }}"
+          FRONTEND_URL=$(gcloud run services describe ${{ env.FRONTEND_SERVICE }} --region=${{ env.REGION }} --format="value(status.url)")
+          echo "Frontend URL: $FRONTEND_URL"
+
