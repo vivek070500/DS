@@ -228,6 +228,7 @@ func CreateInspection(req models.CreateInspectionRequest, userID string) (*model
 func GetInspectionByID(id string) (*models.Inspection, error) {
 	var i models.Inspection
 	var flatType sql.NullString
+	var createdByUserID sql.NullString
 
 	query := convertPlaceholders(`
 		SELECT id, created_at, updated_at, COALESCE(status, 'draft'),
@@ -246,7 +247,7 @@ func GetInspectionByID(id string) (*models.Inspection, error) {
 			COALESCE(windows_type, ''), COALESCE(ms_grill, ''),
 			COALESCE(rcc_work, ''), COALESCE(brick_work, ''), COALESCE(internal_plaster, ''), COALESCE(external_plaster, ''), COALESCE(flooring_work, ''),
 			COALESCE(window_door_fitting, ''), COALESCE(painting_finishing, ''), labours_at_site, COALESCE(num_labours, ''),
-			construction_material_at_site
+			construction_material_at_site, created_by_user_id
 		FROM inspections WHERE id = ?`)
 	err := DB.QueryRow(query, id).Scan(
 		&i.ID, &i.CreatedAt, &i.UpdatedAt, &i.Status,
@@ -265,10 +266,14 @@ func GetInspectionByID(id string) (*models.Inspection, error) {
 		&i.WindowsType, &i.MSGrill,
 		&i.RCCWork, &i.BrickWork, &i.InternalPlaster, &i.ExternalPlaster, &i.FlooringWork,
 		&i.WindowDoorFitting, &i.PaintingFinishing, &i.LaboursAtSite, &i.NumLabours,
-		&i.ConstructionMaterialAtSite,
+		&i.ConstructionMaterialAtSite, &createdByUserID,
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	if createdByUserID.Valid {
+		i.CreatedByUserID = createdByUserID.String
 	}
 
 	if flatType.Valid {
