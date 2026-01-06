@@ -213,10 +213,10 @@ func CreateInspection(req models.CreateInspectionRequest, userID string) (*model
 	now := time.Now()
 
 	query := convertPlaceholders(`
-		INSERT INTO inspections (id, created_at, updated_at, employee_name, location, inspection_date, person_visited, property_address, created_by_user_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		INSERT INTO inspections (id, created_at, updated_at, employee_name, location, inspection_date, person_visited, property_address, applicant_name, created_by_user_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	_, err := DB.Exec(query,
-		id, now, now, req.EmployeeName, req.Location, req.InspectionDate, req.PersonVisited, req.PropertyAddress, userID)
+		id, now, now, req.EmployeeName, req.Location, req.InspectionDate, req.PersonVisited, req.PropertyAddress, req.ApplicantName, userID)
 	if err != nil {
 		return nil, err
 	}

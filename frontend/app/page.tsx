@@ -15,7 +15,8 @@ import {
   Loader2,
   Sparkles,
   Navigation,
-  ExternalLink
+  ExternalLink,
+  UserCircle
 } from "lucide-react";
 
 export default function HomePage() {
@@ -33,6 +34,7 @@ export default function HomePage() {
     inspection_date: new Date().toISOString().split("T")[0],
     person_visited: "",
     property_address: "",
+    applicant_name: "",
   });
 
   // Redirect to login if not authenticated
@@ -257,6 +259,23 @@ export default function HomePage() {
                 onChange={(e) => setFormData(prev => ({ ...prev, property_address: e.target.value }))}
                 placeholder="Enter complete property address with access road"
                 className="input-field min-h-[80px]"
+              />
+            </div>
+
+            {/* Applicant Name */}
+            <div>
+              <label htmlFor="applicant_name" className="form-label">
+                <UserCircle className="w-4 h-4 inline mr-2 text-primary-600" />
+                Name of Applicant/s
+              </label>
+              <input
+                type="text"
+                id="applicant_name"
+                name="applicant_name"
+                value={formData.applicant_name}
+                onChange={handleInputChange}
+                placeholder="Enter applicant name"
+                className="input-field"
               />
             </div>
 

@@ -130,6 +130,7 @@ export interface CreateInspectionRequest {
   inspection_date: string;
   person_visited: string;
   property_address: string;
+  applicant_name: string;
 }
 
 export interface UpdateInspectionRequest extends Partial<Omit<Inspection, "id" | "created_at" | "updated_at" | "photos">> {}

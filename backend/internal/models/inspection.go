@@ -138,6 +138,7 @@ type CreateInspectionRequest struct {
 	InspectionDate  string `json:"inspection_date" binding:"required"`
 	PersonVisited   string `json:"person_visited"`
 	PropertyAddress string `json:"property_address"`
+	ApplicantName   string `json:"applicant_name"`
 }
 
 // UpdateInspectionRequest represents an update request

@@ -13,6 +13,7 @@ import {
   Calendar,
   MapPin,
   User,
+  UserCircle,
   Loader2,
   ChevronRight,
   Trash2,
@@ -28,6 +29,7 @@ export default function HistoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [applicantFilter, setApplicantFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -74,6 +76,7 @@ export default function HistoryPage() {
 
   const clearFilters = () => {
     setSearchTerm("");
+    setApplicantFilter("");
     setDateFrom("");
     setDateTo("");
   };
@@ -83,6 +86,14 @@ export default function HistoryPage() {
     if (isAdmin && searchTerm.trim()) {
       const term = searchTerm.toLowerCase().trim();
       if (!(i.employee_name || "").toLowerCase().includes(term)) {
+        return false;
+      }
+    }
+
+    // Filter by applicant name (for both admin and users)
+    if (applicantFilter.trim()) {
+      const term = applicantFilter.toLowerCase().trim();
+      if (!(i.applicant_name || "").toLowerCase().includes(term)) {
         return false;
       }
     }
@@ -108,7 +119,7 @@ export default function HistoryPage() {
     return true;
   });
 
-  const hasActiveFilters = searchTerm || dateFrom || dateTo;
+  const hasActiveFilters = searchTerm || applicantFilter || dateFrom || dateTo;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -171,12 +182,12 @@ export default function HistoryPage() {
 
           {/* Filters */}
           <div className={cn(
-            "flex flex-col sm:flex-row gap-3 sm:items-end",
+            "flex flex-col sm:flex-row gap-3 sm:items-end flex-wrap",
             !showFilters && "hidden sm:flex"
           )}>
             {/* Employee Name Search - Admin Only */}
             {isAdmin && (
-              <div className="flex-1">
+              <div className="flex-1 min-w-[180px]">
                 <label className="block text-xs font-medium text-gray-600 mb-1">
                   Search by Employee
                 </label>
@@ -193,8 +204,25 @@ export default function HistoryPage() {
               </div>
             )}
 
+            {/* Applicant Name Filter */}
+            <div className="flex-1 min-w-[180px]">
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Search by Applicant
+              </label>
+              <div className="relative">
+                <UserCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={applicantFilter}
+                  onChange={(e) => setApplicantFilter(e.target.value)}
+                  placeholder="Applicant name..."
+                  className="input-field pl-9 py-2 text-sm"
+                />
+              </div>
+            </div>
+
             {/* Date From */}
-            <div className={cn("flex-1", !isAdmin && "sm:max-w-[200px]")}>
+            <div className="flex-1 min-w-[150px] sm:max-w-[180px]">
               <label className="block text-xs font-medium text-gray-600 mb-1">
                 From Date
               </label>
@@ -210,7 +238,7 @@ export default function HistoryPage() {
             </div>
 
             {/* Date To */}
-            <div className={cn("flex-1", !isAdmin && "sm:max-w-[200px]")}>
+            <div className="flex-1 min-w-[150px] sm:max-w-[180px]">
               <label className="block text-xs font-medium text-gray-600 mb-1">
                 To Date
               </label>
@@ -244,6 +272,11 @@ export default function HistoryPage() {
               {searchTerm && (
                 <span className="px-2 py-1 bg-gray-100 rounded-lg">
                   Employee: "{searchTerm}"
+                </span>
+              )}
+              {applicantFilter && (
+                <span className="px-2 py-1 bg-gray-100 rounded-lg">
+                  Applicant: "{applicantFilter}"
                 </span>
               )}
               {dateFrom && (
