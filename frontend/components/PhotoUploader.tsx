@@ -2,12 +2,18 @@
 
 import { useCallback, useState, useRef, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
-import { Upload, X, Image as ImageIcon, Camera, XCircle, SwitchCamera, Download } from "lucide-react";
+import { Upload, X, Image as ImageIcon, Camera, XCircle, SwitchCamera, Download, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface PhotoUploaderProps {
   photos: File[];
   onPhotosChange: (photos: File[]) => void;
+}
+
+interface LocationData {
+  lat: number;
+  lng: number;
+  address?: string;
 }
 
 export default function PhotoUploader({
@@ -19,48 +25,286 @@ export default function PhotoUploader({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [facingMode, setFacingMode] = useState<"user" | "environment">("environment");
+  const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
   
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  const addPhotosWithPreviews = useCallback((files: File[]) => {
-    const newPhotos = [...photos, ...files];
-    onPhotosChange(newPhotos);
+  // Get current location
+  const getCurrentLocation = useCallback(async (): Promise<LocationData | null> => {
+    if (!navigator.geolocation) {
+      return null;
+    }
 
-    // Create previews for new files
-    files.forEach((file) => {
+    return new Promise((resolve) => {
+      setIsGettingLocation(true);
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const { latitude, longitude } = position.coords;
+          let address = "";
+          
+          // Try to get address from coordinates
+          try {
+            const response = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&accept-language=en&addressdetails=1`
+            );
+            const data = await response.json();
+            if (data.address) {
+              const parts = [];
+              // Include house number and road
+              if (data.address.house_number) parts.push(data.address.house_number);
+              if (data.address.road) parts.push(data.address.road);
+              // Include area details
+              if (data.address.neighbourhood) parts.push(data.address.neighbourhood);
+              if (data.address.suburb) parts.push(data.address.suburb);
+              // City/town
+              if (data.address.city || data.address.town || data.address.village) {
+                parts.push(data.address.city || data.address.town || data.address.village);
+              }
+              // District and state
+              if (data.address.state_district) parts.push(data.address.state_district);
+              if (data.address.state) parts.push(data.address.state);
+              address = parts.join(", ");
+            }
+          } catch {
+            // Ignore geocoding errors
+          }
+          
+          const locationData = { lat: latitude, lng: longitude, address };
+          setCurrentLocation(locationData);
+          setIsGettingLocation(false);
+          resolve(locationData);
+        },
+        () => {
+          setIsGettingLocation(false);
+          resolve(null);
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    });
+  }, []);
+
+  // Add GPS and timestamp overlay to image
+  const addOverlayToImage = useCallback(async (
+    imageDataUrl: string, 
+    location: LocationData | null
+  ): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = overlayCanvasRef.current;
+        if (!canvas) {
+          resolve(imageDataUrl);
+          return;
+        }
+
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        
+        if (!ctx) {
+          resolve(imageDataUrl);
+          return;
+        }
+
+        // Draw original image
+        ctx.drawImage(img, 0, 0);
+
+        // Prepare overlay text
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-GB', { 
+          day: '2-digit', 
+          month: 'short', 
+          year: 'numeric' 
+        });
+        const timeStr = now.toLocaleTimeString('en-GB', { 
+          hour: '2-digit', 
+          minute: '2-digit', 
+          second: '2-digit',
+          hour12: false 
+        });
+
+        // Calculate font size based on image dimensions
+        const fontSize = Math.max(12, Math.min(img.width, img.height) * 0.025);
+        const padding = fontSize * 0.8;
+        const lineHeight = fontSize * 1.4;
+
+        // Prepare lines
+        const lines: string[] = [];
+        lines.push(`${dateStr} ${timeStr}`);
+        
+        if (location) {
+          lines.push(`${location.lat.toFixed(7)}N ${location.lng.toFixed(8)}E`);
+          
+          // Split address into multiple lines - show full address
+          if (location.address) {
+            const addressParts = location.address.split(", ");
+            let currentLine = "";
+            const maxCharsPerLine = 50; // Increased for better readability
+            
+            for (const part of addressParts) {
+              if (currentLine.length + part.length + 2 > maxCharsPerLine) {
+                if (currentLine) lines.push(currentLine);
+                currentLine = part;
+              } else {
+                currentLine = currentLine ? `${currentLine}, ${part}` : part;
+              }
+            }
+            if (currentLine) lines.push(currentLine);
+          }
+        }
+
+        // Calculate overlay box dimensions
+        ctx.font = `bold ${fontSize}px Arial`;
+        let maxWidth = 0;
+        for (const line of lines) {
+          const metrics = ctx.measureText(line);
+          maxWidth = Math.max(maxWidth, metrics.width);
+        }
+
+        const boxWidth = maxWidth + padding * 2;
+        const boxHeight = lines.length * lineHeight + padding * 2;
+        const boxX = padding;
+        const boxY = img.height - boxHeight - padding;
+
+        // Draw semi-transparent background
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+
+        // Draw text
+        ctx.fillStyle = '#FFFF00'; // Yellow text like in the example
+        ctx.font = `bold ${fontSize}px Arial`;
+        ctx.textBaseline = 'top';
+
+        lines.forEach((line, index) => {
+          ctx.fillText(line, boxX + padding, boxY + padding + index * lineHeight);
+        });
+
+        // Draw location pin icon area (small map preview placeholder)
+        if (location) {
+          const mapSize = Math.min(80, img.width * 0.15);
+          const mapX = img.width - mapSize - padding;
+          const mapY = img.height - mapSize - padding;
+          
+          // Draw map background
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.fillRect(mapX, mapY, mapSize, mapSize);
+          
+          // Draw border
+          ctx.strokeStyle = '#333';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(mapX, mapY, mapSize, mapSize);
+          
+          // Draw pin icon in center
+          ctx.fillStyle = '#EA4335';
+          ctx.beginPath();
+          const pinX = mapX + mapSize / 2;
+          const pinY = mapY + mapSize / 2;
+          ctx.arc(pinX, pinY - 5, 8, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.moveTo(pinX - 8, pinY - 5);
+          ctx.lineTo(pinX, pinY + 10);
+          ctx.lineTo(pinX + 8, pinY - 5);
+          ctx.fill();
+          
+          // Draw inner circle
+          ctx.fillStyle = '#FFF';
+          ctx.beginPath();
+          ctx.arc(pinX, pinY - 5, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        resolve(canvas.toDataURL('image/jpeg', 0.9));
+      };
+      img.src = imageDataUrl;
+    });
+  }, []);
+
+  const addPhotosWithPreviews = useCallback(async (files: File[], addOverlay: boolean = false) => {
+    let location: LocationData | null = null;
+    
+    if (addOverlay) {
+      location = await getCurrentLocation();
+    }
+
+    for (const file of files) {
       const reader = new FileReader();
-      reader.onload = () => {
-        setPreviews((prev) => [...prev, reader.result as string]);
+      reader.onload = async () => {
+        let dataUrl = reader.result as string;
+        
+        if (addOverlay && location) {
+          dataUrl = await addOverlayToImage(dataUrl, location);
+        }
+        
+        // Convert back to file
+        const response = await fetch(dataUrl);
+        const blob = await response.blob();
+        const newFile = new File([blob], file.name, { type: 'image/jpeg' });
+        
+        onPhotosChange([...photos, newFile]);
+        setPreviews((prev) => [...prev, dataUrl]);
       };
       reader.readAsDataURL(file);
-    });
-  }, [photos, onPhotosChange]);
+    }
+  }, [photos, onPhotosChange, getCurrentLocation, addOverlayToImage]);
 
-  const addPhotoFromDataUrl = useCallback((dataUrl: string, fileName: string) => {
+  const addPhotoFromDataUrl = useCallback(async (dataUrl: string, fileName: string, location: LocationData | null) => {
+    // Add overlay with GPS and timestamp
+    const overlayedDataUrl = await addOverlayToImage(dataUrl, location);
+    
     // Convert data URL to File
-    fetch(dataUrl)
+    fetch(overlayedDataUrl)
       .then(res => res.blob())
       .then(blob => {
         const file = new File([blob], fileName, { type: 'image/jpeg' });
         const newPhotos = [...photos, file];
         onPhotosChange(newPhotos);
-        setPreviews((prev) => [...prev, dataUrl]);
+        setPreviews((prev) => [...prev, overlayedDataUrl]);
       });
-  }, [photos, onPhotosChange]);
+  }, [photos, onPhotosChange, addOverlayToImage]);
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
-      addPhotosWithPreviews(acceptedFiles);
+      // For dropped/selected files, add them without overlay
+      // (user can use camera for GPS-tagged photos)
+      acceptedFiles.forEach((file) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const newPhotos = [...photos, file];
+          onPhotosChange(newPhotos);
+          setPreviews((prev) => [...prev, reader.result as string]);
+        };
+        reader.readAsDataURL(file);
+      });
     },
-    [addPhotosWithPreviews]
+    [photos, onPhotosChange]
   );
 
-  const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      addPhotosWithPreviews(Array.from(files));
+      // Get location and add overlay for camera captures from input
+      const location = await getCurrentLocation();
+      
+      for (const file of Array.from(files)) {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const dataUrl = reader.result as string;
+          const overlayedDataUrl = await addOverlayToImage(dataUrl, location);
+          
+          const response = await fetch(overlayedDataUrl);
+          const blob = await response.blob();
+          const newFile = new File([blob], file.name, { type: 'image/jpeg' });
+          
+          onPhotosChange([...photos, newFile]);
+          setPreviews((prev) => [...prev, overlayedDataUrl]);
+        };
+        reader.readAsDataURL(file);
+      }
     }
     if (cameraInputRef.current) {
       cameraInputRef.current.value = "";
@@ -70,6 +314,9 @@ export default function PhotoUploader({
   const startCamera = async (mode: "user" | "environment" = facingMode) => {
     setCameraError(null);
     
+    // Get location when starting camera
+    getCurrentLocation();
+    
     // Stop existing stream if any
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
@@ -77,7 +324,7 @@ export default function PhotoUploader({
     
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { facingMode: mode, width: { ideal: 1920 }, height: { ideal: 1080 } },
         audio: false,
       });
       setStream(mediaStream);
@@ -105,7 +352,7 @@ export default function PhotoUploader({
     setCameraError(null);
   }, [stream]);
 
-  const capturePhoto = () => {
+  const capturePhoto = async () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
@@ -116,9 +363,11 @@ export default function PhotoUploader({
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(video, 0, 0);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-        const fileName = `camera_${Date.now()}.jpg`;
-        addPhotoFromDataUrl(dataUrl, fileName);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        const fileName = `photo_${Date.now()}.jpg`;
+        
+        // Use current location that was fetched when camera started
+        await addPhotoFromDataUrl(dataUrl, fileName, currentLocation);
         stopCamera();
       }
     }
@@ -180,16 +429,30 @@ export default function PhotoUploader({
 
       {/* Hidden canvas for capturing */}
       <canvas ref={canvasRef} className="hidden" />
+      
+      {/* Hidden canvas for overlay */}
+      <canvas ref={overlayCanvasRef} className="hidden" />
 
       {/* Camera Modal */}
       {showCamera && (
         <div className="fixed inset-0 bg-black z-50 flex flex-col">
           {/* Header */}
           <div className="bg-gray-900 p-3 sm:p-4 flex items-center justify-between flex-shrink-0">
-            <h3 className="text-white font-semibold flex items-center gap-2 text-sm sm:text-base">
-              <Camera className="w-4 h-4 sm:w-5 sm:h-5" />
-              Take a Photo
-            </h3>
+            <div>
+              <h3 className="text-white font-semibold flex items-center gap-2 text-sm sm:text-base">
+                <Camera className="w-4 h-4 sm:w-5 sm:h-5" />
+                Take a Photo
+              </h3>
+              {currentLocation && (
+                <p className="text-green-400 text-xs flex items-center gap-1 mt-1">
+                  <MapPin className="w-3 h-3" />
+                  GPS: {currentLocation.lat.toFixed(5)}, {currentLocation.lng.toFixed(5)}
+                </p>
+              )}
+              {isGettingLocation && (
+                <p className="text-yellow-400 text-xs mt-1">Getting location...</p>
+              )}
+            </div>
             <button
               onClick={stopCamera}
               className="text-white hover:text-red-400 transition-colors p-1"
@@ -207,6 +470,19 @@ export default function PhotoUploader({
               muted
               className="w-full h-full object-contain sm:object-cover"
             />
+            
+            {/* Live overlay preview */}
+            <div className="absolute bottom-4 left-4 bg-black/60 text-yellow-400 text-xs p-2 rounded font-mono max-w-[90%]">
+              <div>{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</div>
+              {currentLocation && (
+                <>
+                  <div>{currentLocation.lat.toFixed(7)}N {currentLocation.lng.toFixed(8)}E</div>
+                  {currentLocation.address && (
+                    <div className="whitespace-pre-wrap break-words">{currentLocation.address}</div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
           
           {/* Controls */}
@@ -268,7 +544,7 @@ export default function PhotoUploader({
                   Drag & drop or click to select
                 </p>
                 <p className="text-xs text-gray-400">
-                  JPG, PNG, WebP
+                  JPG, PNG, WebP (no GPS stamp)
                 </p>
               </>
             )}
@@ -288,8 +564,9 @@ export default function PhotoUploader({
             <p className="text-gray-600 font-medium text-sm">
               Take a Photo
             </p>
-            <p className="text-xs text-gray-400">
-              Open camera
+            <p className="text-xs text-green-600 flex items-center gap-1">
+              <MapPin className="w-3 h-3" />
+              With GPS & timestamp
             </p>
           </div>
         </button>

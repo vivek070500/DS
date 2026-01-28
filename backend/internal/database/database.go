@@ -625,7 +625,7 @@ func GetUserByEmail(email string) (*models.User, error) {
 
 	query := convertPlaceholders(`SELECT id, email, name, COALESCE(picture, ''), role, is_active, created_at, updated_at, created_by
 		FROM users WHERE email = ?`)
-	
+
 	err := DB.QueryRow(query, email).Scan(
 		&u.ID, &u.Email, &u.Name, &picture, &u.Role, &u.IsActive, &u.CreatedAt, &u.UpdatedAt, &createdBy)
 	if err != nil {
@@ -650,7 +650,7 @@ func GetUserByID(id string) (*models.User, error) {
 
 	query := convertPlaceholders(`SELECT id, email, name, COALESCE(picture, ''), role, is_active, created_at, updated_at, created_by
 		FROM users WHERE id = ?`)
-	
+
 	err := DB.QueryRow(query, id).Scan(
 		&u.ID, &u.Email, &u.Name, &picture, &u.Role, &u.IsActive, &u.CreatedAt, &u.UpdatedAt, &createdBy)
 	if err != nil {
@@ -754,6 +754,78 @@ func DeleteUser(id string) error {
 	return err
 }
 
+// CleanupOldInspections deletes inspections and their photos older than the specified number of days
+func CleanupOldInspections(daysOld int) (int64, error) {
+	// Calculate cutoff date
+	cutoffDate := time.Now().AddDate(0, 0, -daysOld)
+
+	// First, get the IDs of inspections to be deleted (for logging)
+	query := convertPlaceholders(`SELECT id FROM inspections WHERE created_at < ?`)
+	rows, err := DB.Query(query, cutoffDate)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	// Photos will be deleted automatically due to ON DELETE CASCADE
+	// But we need to get photo paths first for GCS cleanup
+	photoQuery := convertPlaceholders(`SELECT file_path FROM photos WHERE inspection_id IN (SELECT id FROM inspections WHERE created_at < ?)`)
+	photoRows, err := DB.Query(photoQuery, cutoffDate)
+	if err != nil {
+		return 0, err
+	}
+	defer photoRows.Close()
+
+	var photoPaths []string
+	for photoRows.Next() {
+		var path string
+		if err := photoRows.Scan(&path); err != nil {
+			continue
+		}
+		photoPaths = append(photoPaths, path)
+	}
+
+	// Delete inspections (photos will cascade delete)
+	deleteQuery := convertPlaceholders(`DELETE FROM inspections WHERE created_at < ?`)
+	result, err := DB.Exec(deleteQuery, cutoffDate)
+	if err != nil {
+		return 0, err
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+
+	// Log deleted inspections
+	for _, id := range ids {
+		log.Printf("Deleted old inspection: %s", id)
+	}
+
+	// Return photo paths for GCS cleanup (caller should handle this)
+	// Store in package variable for retrieval
+	lastDeletedPhotoPaths = photoPaths
+
+	return rowsAffected, nil
+}
+
+// GetLastDeletedPhotoPaths returns the photo paths from the last cleanup operation
+var lastDeletedPhotoPaths []string
+
+func GetLastDeletedPhotoPaths() []string {
+	return lastDeletedPhotoPaths
+}
+
 // GetInspectionsByUserID retrieves all inspections created by a specific user
 func GetInspectionsByUserID(userID string) ([]models.Inspection, error) {
 	query := convertPlaceholders(`
@@ -782,4 +854,3 @@ func GetInspectionsByUserID(userID string) ([]models.Inspection, error) {
 
 	return inspections, nil
 }
-

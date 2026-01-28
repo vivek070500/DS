@@ -551,3 +551,71 @@ func GeneratePDF(c *gin.Context) {
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=inspection_%s.pdf", id[:8]))
 	c.File(pdfPath)
 }
+
+// CleanupOldData handles POST /api/cleanup
+// This endpoint is protected by a secret key for scheduled jobs
+func CleanupOldData(c *gin.Context) {
+	// Verify cleanup secret key
+	cleanupKey := c.GetHeader("X-Cleanup-Key")
+	expectedKey := os.Getenv("CLEANUP_SECRET_KEY")
+	
+	if expectedKey == "" {
+		expectedKey = "ds-enterprises-cleanup-secret-2024" // Default for development
+	}
+	
+	if cleanupKey != expectedKey {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid cleanup key"})
+		return
+	}
+	
+	// Default to 60 days (2 months)
+	daysOld := 60
+	
+	// Allow override via query parameter
+	if days := c.Query("days"); days != "" {
+		if d, err := fmt.Sscanf(days, "%d", &daysOld); err == nil && d > 0 {
+			// Use parsed value
+		}
+	}
+	
+	log.Printf("Starting cleanup of data older than %d days", daysOld)
+	
+	// Delete old inspections from database
+	deletedCount, err := database.CleanupOldInspections(daysOld)
+	if err != nil {
+		log.Printf("Cleanup error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Cleanup failed: %v", err)})
+		return
+	}
+	
+	// Delete photos from GCS
+	photoPaths := database.GetLastDeletedPhotoPaths()
+	gcsDeletedCount := 0
+	
+	if storage.IsGCSEnabled() {
+		for _, path := range photoPaths {
+			// Extract GCS path from URL
+			if strings.Contains(path, "storage.googleapis.com") {
+				// Parse the GCS path
+				parts := strings.Split(path, "/")
+				if len(parts) >= 2 {
+					gcsPath := strings.Join(parts[len(parts)-2:], "/")
+					if err := storage.DeleteFile(gcsPath); err != nil {
+						log.Printf("Failed to delete GCS file %s: %v", gcsPath, err)
+					} else {
+						gcsDeletedCount++
+					}
+				}
+			}
+		}
+	}
+	
+	log.Printf("Cleanup complete: %d inspections deleted, %d GCS files deleted", deletedCount, gcsDeletedCount)
+	
+	c.JSON(http.StatusOK, gin.H{
+		"message":             "Cleanup completed successfully",
+		"inspections_deleted": deletedCount,
+		"photos_deleted":      gcsDeletedCount,
+		"days_threshold":      daysOld,
+	})
+}

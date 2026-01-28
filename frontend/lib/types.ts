@@ -161,7 +161,7 @@ export const OCCUPANCY_STATUSES = [
   "Vacant",
 ] as const;
 
-export const LIFT_OPTIONS = ["One", "Two", "Three", "Four", "Five", "Six"] as const;
+export const LIFT_OPTIONS = ["Not Available", "One", "Two", "Three", "Four", "Five", "Six"] as const;
 
 export const FLOORING_TYPES = [
   "Vitrified",

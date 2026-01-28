@@ -1,0 +1,56 @@
+name: Cleanup Old Data
+
+on:
+  # Run every Sunday at 2:00 AM UTC
+  schedule:
+    - cron: '0 2 * * 0'
+  
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      days_old:
+        description: 'Delete data older than X days'
+        required: false
+        default: '60'
+
+env:
+  BACKEND_URL: https://ds-enterprises-backend-478178277526.asia-south1.run.app
+
+jobs:
+  cleanup:
+    name: Cleanup Old Inspections and Photos
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Cleanup Old Data
+        run: |
+          DAYS="${{ github.event.inputs.days_old || '60' }}"
+          echo "🧹 Starting cleanup of data older than $DAYS days..."
+          
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "${{ env.BACKEND_URL }}/api/cleanup?days=$DAYS" \
+            -H "X-Cleanup-Key: ${{ secrets.CLEANUP_SECRET_KEY }}" \
+            -H "Content-Type: application/json")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "Response: $BODY"
+          echo "HTTP Code: $HTTP_CODE"
+          
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Cleanup failed with HTTP code: $HTTP_CODE"
+            exit 1
+          fi
+          
+          echo "✅ Cleanup completed successfully!"
+          echo "$BODY" | jq '.' 2>/dev/null || echo "$BODY"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Cleanup Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Days threshold:** ${{ github.event.inputs.days_old || '60' }} days" >> $GITHUB_STEP_SUMMARY
+          echo "- **Time:** $(date -u)" >> $GITHUB_STEP_SUMMARY

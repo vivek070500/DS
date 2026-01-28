@@ -68,6 +68,9 @@ func main() {
 			c.JSON(200, gin.H{"status": "ok"})
 		})
 
+		// Cleanup endpoint (protected by secret key, for scheduled jobs)
+		api.POST("/cleanup", handlers.CleanupOldData)
+
 		// Public auth routes
 		api.POST("/auth/google", handlers.GoogleLogin)
 
