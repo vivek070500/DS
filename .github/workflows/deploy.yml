@@ -97,6 +97,7 @@ jobs:
             --set-env-vars "DATABASE_URL=${{ secrets.DATABASE_URL }}" \
             --set-env-vars "GCS_BUCKET_NAME=${{ env.GCS_BUCKET_NAME }}" \
             --set-env-vars "JWT_SECRET=${{ secrets.JWT_SECRET }}" \
+            --set-env-vars "CLEANUP_SECRET_KEY=${{ secrets.CLEANUP_SECRET_KEY }}" \
             --set-env-vars "FRONTEND_URL=https://${{ env.FRONTEND_SERVICE }}-478178277526.${{ env.REGION }}.run.app" \
             --add-cloudsql-instances ${{ env.PROJECT_ID }}:${{ env.REGION }}:ds-enterprises-db \
             --memory 512Mi \
