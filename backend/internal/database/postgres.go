@@ -160,6 +160,22 @@ func createPostgresTables() error {
 		return fmt.Errorf("creating photos table: %w", err)
 	}
 
+	// Add new columns for existing databases (will silently fail if columns already exist)
+	migrations := []string{
+		"ALTER TABLE inspections ADD COLUMN IF NOT EXISTS approach_road TEXT",
+		"ALTER TABLE inspections ADD COLUMN IF NOT EXISTS road_width TEXT",
+		"ALTER TABLE inspections ADD COLUMN IF NOT EXISTS road_width_unit TEXT",
+		"ALTER TABLE inspections ADD COLUMN IF NOT EXISTS created_by_user_id TEXT",
+		"ALTER TABLE inspections ADD COLUMN IF NOT EXISTS measurements TEXT",
+		"ALTER TABLE inspections ADD COLUMN IF NOT EXISTS road_size TEXT",
+		"ALTER TABLE inspections ADD COLUMN IF NOT EXISTS rera_registered BOOLEAN DEFAULT false",
+		"ALTER TABLE inspections ADD COLUMN IF NOT EXISTS rera_number TEXT",
+		"ALTER TABLE inspections ADD COLUMN IF NOT EXISTS critical_remarks TEXT",
+	}
+	for _, m := range migrations {
+		DB.Exec(m)
+	}
+
 	return nil
 }
 
