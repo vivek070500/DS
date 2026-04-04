@@ -27,6 +27,8 @@ export default function PhotoUploader({
   const [facingMode, setFacingMode] = useState<"user" | "environment">("environment");
   const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [capturedPreview, setCapturedPreview] = useState<string | null>(null);
+  const [capturedFileName, setCapturedFileName] = useState<string>("");
   
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -350,6 +352,8 @@ export default function PhotoUploader({
     }
     setShowCamera(false);
     setCameraError(null);
+    setCapturedPreview(null);
+    setCapturedFileName("");
   }, [stream]);
 
   const capturePhoto = async () => {
@@ -366,11 +370,30 @@ export default function PhotoUploader({
         const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
         const fileName = `photo_${Date.now()}.jpg`;
         
-        // Use current location that was fetched when camera started
-        await addPhotoFromDataUrl(dataUrl, fileName, currentLocation);
-        stopCamera();
+        const overlayedDataUrl = await addOverlayToImage(dataUrl, currentLocation);
+        setCapturedPreview(overlayedDataUrl);
+        setCapturedFileName(fileName);
       }
     }
+  };
+
+  const confirmCapturedPhoto = async () => {
+    if (capturedPreview) {
+      const response = await fetch(capturedPreview);
+      const blob = await response.blob();
+      const file = new File([blob], capturedFileName, { type: 'image/jpeg' });
+      const newPhotos = [...photos, file];
+      onPhotosChange(newPhotos);
+      setPreviews((prev) => [...prev, capturedPreview]);
+      setCapturedPreview(null);
+      setCapturedFileName("");
+      stopCamera();
+    }
+  };
+
+  const retakePhoto = () => {
+    setCapturedPreview(null);
+    setCapturedFileName("");
   };
 
   // Set video source when stream changes
@@ -435,80 +458,115 @@ export default function PhotoUploader({
 
       {/* Camera Modal */}
       {showCamera && (
-        <div className="fixed inset-0 bg-black z-50 flex flex-col">
+        <div className="fixed inset-0 bg-black z-50 flex flex-col" style={{ height: '100dvh' }}>
           {/* Header */}
-          <div className="bg-gray-900 p-3 sm:p-4 flex items-center justify-between flex-shrink-0">
+          <div className="bg-gray-900 p-2 sm:p-3 flex items-center justify-between flex-shrink-0">
             <div>
-              <h3 className="text-white font-semibold flex items-center gap-2 text-sm sm:text-base">
-                <Camera className="w-4 h-4 sm:w-5 sm:h-5" />
-                Take a Photo
+              <h3 className="text-white font-semibold flex items-center gap-2 text-sm">
+                <Camera className="w-4 h-4" />
+                {capturedPreview ? "Review Photo" : "Take a Photo"}
               </h3>
-              {currentLocation && (
-                <p className="text-green-400 text-xs flex items-center gap-1 mt-1">
+              {currentLocation && !capturedPreview && (
+                <p className="text-green-400 text-[10px] flex items-center gap-1 mt-0.5">
                   <MapPin className="w-3 h-3" />
                   GPS: {currentLocation.lat.toFixed(5)}, {currentLocation.lng.toFixed(5)}
                 </p>
               )}
               {isGettingLocation && (
-                <p className="text-yellow-400 text-xs mt-1">Getting location...</p>
+                <p className="text-yellow-400 text-[10px] mt-0.5">Getting location...</p>
               )}
             </div>
             <button
-              onClick={stopCamera}
+              onClick={() => { setCapturedPreview(null); setCapturedFileName(""); stopCamera(); }}
               className="text-white hover:text-red-400 transition-colors p-1"
             >
-              <XCircle className="w-6 h-6 sm:w-7 sm:h-7" />
+              <XCircle className="w-6 h-6" />
             </button>
           </div>
           
-          {/* Video */}
-          <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-contain sm:object-cover"
-            />
-            
-            {/* Live overlay preview */}
-            <div className="absolute bottom-4 left-4 bg-black/60 text-yellow-400 text-xs p-2 rounded font-mono max-w-[90%]">
-              <div>{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</div>
-              {currentLocation && (
-                <>
-                  <div>{currentLocation.lat.toFixed(7)}N {currentLocation.lng.toFixed(8)}E</div>
-                  {currentLocation.address && (
-                    <div className="whitespace-pre-wrap break-words">{currentLocation.address}</div>
+          {capturedPreview ? (
+            <>
+              {/* Photo Preview */}
+              <div className="flex-1 min-h-0 relative bg-black flex items-center justify-center overflow-hidden">
+                <img
+                  src={capturedPreview}
+                  alt="Captured preview"
+                  className="max-w-full max-h-full object-contain"
+                />
+              </div>
+              
+              {/* Review Controls */}
+              <div className="p-3 sm:p-4 bg-gray-900 flex justify-center items-center gap-4 sm:gap-6 flex-shrink-0">
+                <button
+                  onClick={retakePhoto}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-gray-700 hover:bg-gray-600 text-white rounded-full transition-colors text-sm"
+                  title="Retake"
+                >
+                  <Camera className="w-4 h-4" />
+                  Retake
+                </button>
+                <button
+                  onClick={confirmCapturedPhoto}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-full transition-colors text-sm font-medium"
+                  title="Use Photo"
+                >
+                  <Download className="w-4 h-4" />
+                  Use Photo
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Video */}
+              <div className="flex-1 min-h-0 relative bg-black flex items-center justify-center overflow-hidden">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="max-w-full max-h-full object-contain sm:w-full sm:h-full sm:object-cover"
+                />
+                
+                {/* Live overlay preview */}
+                <div className="absolute bottom-2 left-2 bg-black/60 text-yellow-400 text-[10px] p-1.5 rounded font-mono max-w-[85%]">
+                  <div>{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</div>
+                  {currentLocation && (
+                    <>
+                      <div>{currentLocation.lat.toFixed(7)}N {currentLocation.lng.toFixed(8)}E</div>
+                      {currentLocation.address && (
+                        <div className="whitespace-pre-wrap break-words">{currentLocation.address}</div>
+                      )}
+                    </>
                   )}
-                </>
-              )}
-            </div>
-          </div>
-          
-          {/* Controls */}
-          <div className="p-4 sm:p-6 bg-gray-900 flex justify-center items-center gap-4 sm:gap-6 flex-shrink-0">
-            <button
-              onClick={stopCamera}
-              className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-700 hover:bg-gray-600 text-white rounded-full flex items-center justify-center transition-colors"
-              title="Cancel"
-            >
-              <X className="w-5 h-5 sm:w-6 sm:h-6" />
-            </button>
-            <button
-              onClick={capturePhoto}
-              className="w-16 h-16 sm:w-20 sm:h-20 bg-white hover:bg-gray-100 text-gray-900 rounded-full flex items-center justify-center transition-colors ring-4 ring-white/30"
-              title="Capture"
-            >
-              <Camera className="w-7 h-7 sm:w-8 sm:h-8" />
-            </button>
-            <button
-              onClick={switchCamera}
-              className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-700 hover:bg-gray-600 text-white rounded-full flex items-center justify-center transition-colors"
-              title="Switch Camera"
-            >
-              <SwitchCamera className="w-5 h-5 sm:w-6 sm:h-6" />
-            </button>
-          </div>
+                </div>
+              </div>
+              
+              {/* Capture Controls */}
+              <div className="p-3 sm:p-4 bg-gray-900 flex justify-center items-center gap-4 sm:gap-6 flex-shrink-0">
+                <button
+                  onClick={() => { setCapturedPreview(null); setCapturedFileName(""); stopCamera(); }}
+                  className="w-11 h-11 sm:w-14 sm:h-14 bg-gray-700 hover:bg-gray-600 text-white rounded-full flex items-center justify-center transition-colors"
+                  title="Cancel"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={capturePhoto}
+                  className="w-16 h-16 sm:w-20 sm:h-20 bg-white hover:bg-gray-100 text-gray-900 rounded-full flex items-center justify-center transition-colors ring-4 ring-white/30"
+                  title="Capture"
+                >
+                  <Camera className="w-7 h-7 sm:w-8 sm:h-8" />
+                </button>
+                <button
+                  onClick={switchCamera}
+                  className="w-11 h-11 sm:w-14 sm:h-14 bg-gray-700 hover:bg-gray-600 text-white rounded-full flex items-center justify-center transition-colors"
+                  title="Switch Camera"
+                >
+                  <SwitchCamera className="w-5 h-5" />
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
