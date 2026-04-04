@@ -23,6 +23,7 @@ import {
   Wrench,
   Image,
   ExternalLink,
+  Ruler,
 } from "lucide-react";
 
 export default function PreviewPage() {
@@ -240,6 +241,8 @@ export default function PreviewPage() {
               Basic Information
             </h3>
             <div className="space-y-1">
+              <DataRow label="Road Size" value={inspection.road_size} />
+              <DataRow label="RERA Registered" value={inspection.rera_registered ? `Yes - ${inspection.rera_number}` : "No"} />
               <DataRow label="Bank Name" value={inspection.bank_name} />
               <DataRow label="Applicant Name" value={inspection.applicant_name} />
               <DataRow label="Project Name" value={inspection.project_name} />
@@ -267,6 +270,46 @@ export default function PreviewPage() {
               <DataRow label="Super Built Up Area" value={inspection.super_built_up_area} />
               <DataRow label="Number of Lifts" value={inspection.num_lifts} />
             </div>
+
+            {/* Measurements Table */}
+            {inspection.measurements && inspection.measurements.length > 0 && (
+              <div className="mt-6">
+                <h4 className="font-semibold text-gray-700 flex items-center gap-2 mb-3">
+                  <Ruler className="w-4 h-4 text-primary-600" />
+                  Measurements
+                </h4>
+                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 text-left font-medium text-gray-600">
+                        <th className="px-4 py-2">Description</th>
+                        <th className="px-4 py-2 text-center">Length</th>
+                        <th className="px-4 py-2 text-center">Width</th>
+                        <th className="px-4 py-2 text-center">Total Area</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inspection.measurements.map((row, i) => (
+                        <tr key={i} className="border-t border-gray-100">
+                          <td className="px-4 py-2">{row.description}</td>
+                          <td className="px-4 py-2 text-center">{row.length}</td>
+                          <td className="px-4 py-2 text-center">{row.width}</td>
+                          <td className="px-4 py-2 text-center font-medium">{(row.length * row.width).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold">
+                        <td colSpan={3} className="px-4 py-2 text-right">Total Area:</td>
+                        <td className="px-4 py-2 text-center text-primary-700">
+                          {inspection.measurements.reduce((sum, r) => sum + r.length * r.width, 0).toFixed(2)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Boundaries */}
@@ -349,6 +392,17 @@ export default function PreviewPage() {
                 <DataRow label="Number of Labours" value={inspection.num_labours} />
                 <DataRow label="Construction Material at Site" value={inspection.construction_material_at_site} />
               </div>
+            </div>
+          )}
+
+          {/* Critical Remarks */}
+          {inspection.critical_remarks && (
+            <div className="card p-6 border-l-4 border-l-red-400">
+              <h3 className="section-title">
+                <Ruler className="w-5 h-5 text-red-500" />
+                Critical Remarks
+              </h3>
+              <p className="text-gray-700 whitespace-pre-wrap">{inspection.critical_remarks}</p>
             </div>
           )}
 

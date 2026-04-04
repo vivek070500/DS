@@ -32,6 +32,39 @@ func (s *StringSlice) Scan(value interface{}) error {
 	return json.Unmarshal(data, s)
 }
 
+// MeasurementRow represents a single row in the measurements table
+type MeasurementRow struct {
+	Description string  `json:"description"`
+	Length      float64 `json:"length"`
+	Width       float64 `json:"width"`
+}
+
+// MeasurementsSlice is a custom type for handling measurement rows in the database
+type MeasurementsSlice []MeasurementRow
+
+func (m MeasurementsSlice) Value() (driver.Value, error) {
+	if len(m) == 0 {
+		return "[]", nil
+	}
+	data, err := json.Marshal(m)
+	return string(data), err
+}
+
+func (m *MeasurementsSlice) Scan(value interface{}) error {
+	if value == nil {
+		*m = []MeasurementRow{}
+		return nil
+	}
+	var data []byte
+	switch v := value.(type) {
+	case []byte:
+		data = v
+	case string:
+		data = []byte(v)
+	}
+	return json.Unmarshal(data, m)
+}
+
 // Inspection represents a property inspection record
 type Inspection struct {
 	ID        string    `json:"id"`
@@ -44,6 +77,11 @@ type Inspection struct {
 	Location       string `json:"location"`
 	InspectionDate string `json:"inspection_date"`
 	PersonVisited  string `json:"person_visited"`
+
+	// Initial Info (continued)
+	RoadSize       string `json:"road_size"`
+	ReraRegistered bool   `json:"rera_registered"`
+	ReraNumber     string `json:"rera_number"`
 
 	// Basic Info
 	TypeOfCase             string `json:"type_of_case"`
@@ -71,8 +109,9 @@ type Inspection struct {
 	TotalFlats       string      `json:"total_flats"`
 	PerFloorFlats    string      `json:"per_floor_flats"`
 	FlatType         StringSlice `json:"flat_type"`
-	CarpetArea       string      `json:"carpet_area"`
-	SuperBuiltUpArea string      `json:"super_built_up_area"`
+	CarpetArea       string            `json:"carpet_area"`
+	SuperBuiltUpArea string            `json:"super_built_up_area"`
+	Measurements     MeasurementsSlice `json:"measurements"`
 
 	// Occupancy
 	OccupancyStatus          string `json:"occupancy_status"`
@@ -114,6 +153,9 @@ type Inspection struct {
 	NumLabours                string `json:"num_labours"`
 	ConstructionMaterialAtSite bool   `json:"construction_material_at_site"`
 
+	// Remarks
+	CriticalRemarks string `json:"critical_remarks"`
+
 	// User tracking
 	CreatedByUserID string `json:"created_by_user_id"`
 
@@ -139,6 +181,9 @@ type CreateInspectionRequest struct {
 	PersonVisited   string `json:"person_visited"`
 	PropertyAddress string `json:"property_address"`
 	ApplicantName   string `json:"applicant_name"`
+	RoadSize        string `json:"road_size"`
+	ReraRegistered  bool   `json:"rera_registered"`
+	ReraNumber      string `json:"rera_number"`
 }
 
 // UpdateInspectionRequest represents an update request
@@ -150,6 +195,10 @@ type UpdateInspectionRequest struct {
 	Location       *string `json:"location,omitempty"`
 	InspectionDate *string `json:"inspection_date,omitempty"`
 	PersonVisited  *string `json:"person_visited,omitempty"`
+
+	RoadSize       *string `json:"road_size,omitempty"`
+	ReraRegistered *bool   `json:"rera_registered,omitempty"`
+	ReraNumber     *string `json:"rera_number,omitempty"`
 
 	// All other fields are optional for updates
 	TypeOfCase             *string      `json:"type_of_case,omitempty"`
@@ -173,8 +222,9 @@ type UpdateInspectionRequest struct {
 	TotalFlats             *string      `json:"total_flats,omitempty"`
 	PerFloorFlats          *string      `json:"per_floor_flats,omitempty"`
 	FlatType               *StringSlice `json:"flat_type,omitempty"`
-	CarpetArea             *string      `json:"carpet_area,omitempty"`
-	SuperBuiltUpArea       *string      `json:"super_built_up_area,omitempty"`
+	CarpetArea             *string            `json:"carpet_area,omitempty"`
+	SuperBuiltUpArea       *string            `json:"super_built_up_area,omitempty"`
+	Measurements           *MeasurementsSlice `json:"measurements,omitempty"`
 	OccupancyStatus        *string      `json:"occupancy_status,omitempty"`
 	OccupantName           *string      `json:"occupant_name,omitempty"`
 	OccupiedSince          *string      `json:"occupied_since,omitempty"`
@@ -203,5 +253,6 @@ type UpdateInspectionRequest struct {
 	LaboursAtSite          *bool        `json:"labours_at_site,omitempty"`
 	NumLabours             *string      `json:"num_labours,omitempty"`
 	ConstructionMaterialAtSite *bool    `json:"construction_material_at_site,omitempty"`
+	CriticalRemarks            *string  `json:"critical_remarks,omitempty"`
 }
 

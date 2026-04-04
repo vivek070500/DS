@@ -72,6 +72,10 @@ func createPostgresTables() error {
 		inspection_date TEXT,
 		person_visited TEXT,
 		
+		road_size TEXT,
+		rera_registered BOOLEAN DEFAULT false,
+		rera_number TEXT,
+		
 		type_of_case TEXT,
 		bank_name TEXT,
 		applicant_name TEXT,
@@ -97,6 +101,7 @@ func createPostgresTables() error {
 		flat_type TEXT,
 		carpet_area TEXT,
 		super_built_up_area TEXT,
+		measurements TEXT,
 		
 		occupancy_status TEXT,
 		occupant_name TEXT,
@@ -131,6 +136,7 @@ func createPostgresTables() error {
 		labours_at_site BOOLEAN DEFAULT false,
 		num_labours TEXT,
 		construction_material_at_site BOOLEAN DEFAULT false,
+		critical_remarks TEXT,
 		created_by_user_id TEXT
 	);`
 

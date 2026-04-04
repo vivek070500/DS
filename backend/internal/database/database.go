@@ -83,6 +83,10 @@ func createTables() error {
 		inspection_date TEXT,
 		person_visited TEXT,
 		
+		road_size TEXT,
+		rera_registered INTEGER DEFAULT 0,
+		rera_number TEXT,
+		
 		type_of_case TEXT,
 		bank_name TEXT,
 		applicant_name TEXT,
@@ -108,6 +112,7 @@ func createTables() error {
 		flat_type TEXT,
 		carpet_area TEXT,
 		super_built_up_area TEXT,
+		measurements TEXT,
 		
 		occupancy_status TEXT,
 		occupant_name TEXT,
@@ -142,6 +147,7 @@ func createTables() error {
 		labours_at_site INTEGER DEFAULT 0,
 		num_labours TEXT,
 		construction_material_at_site INTEGER DEFAULT 0,
+		critical_remarks TEXT,
 		created_by_user_id TEXT
 	);`
 
@@ -172,6 +178,11 @@ func createTables() error {
 		"ALTER TABLE inspections ADD COLUMN road_width TEXT",
 		"ALTER TABLE inspections ADD COLUMN road_width_unit TEXT",
 		"ALTER TABLE inspections ADD COLUMN created_by_user_id TEXT",
+		"ALTER TABLE inspections ADD COLUMN measurements TEXT",
+		"ALTER TABLE inspections ADD COLUMN road_size TEXT",
+		"ALTER TABLE inspections ADD COLUMN rera_registered INTEGER DEFAULT 0",
+		"ALTER TABLE inspections ADD COLUMN rera_number TEXT",
+		"ALTER TABLE inspections ADD COLUMN critical_remarks TEXT",
 	}
 	for _, m := range migrations {
 		DB.Exec(m) // Ignore errors (column may already exist)
@@ -213,10 +224,10 @@ func CreateInspection(req models.CreateInspectionRequest, userID string) (*model
 	now := time.Now()
 
 	query := convertPlaceholders(`
-		INSERT INTO inspections (id, created_at, updated_at, employee_name, location, inspection_date, person_visited, property_address, applicant_name, created_by_user_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		INSERT INTO inspections (id, created_at, updated_at, employee_name, location, inspection_date, person_visited, property_address, applicant_name, road_size, rera_registered, rera_number, created_by_user_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	_, err := DB.Exec(query,
-		id, now, now, req.EmployeeName, req.Location, req.InspectionDate, req.PersonVisited, req.PropertyAddress, req.ApplicantName, userID)
+		id, now, now, req.EmployeeName, req.Location, req.InspectionDate, req.PersonVisited, req.PropertyAddress, req.ApplicantName, req.RoadSize, req.ReraRegistered, req.ReraNumber, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -228,17 +239,19 @@ func CreateInspection(req models.CreateInspectionRequest, userID string) (*model
 func GetInspectionByID(id string) (*models.Inspection, error) {
 	var i models.Inspection
 	var flatType sql.NullString
+	var measurements sql.NullString
 	var createdByUserID sql.NullString
 
 	query := convertPlaceholders(`
 		SELECT id, created_at, updated_at, COALESCE(status, 'draft'),
 			COALESCE(employee_name, ''), COALESCE(location, ''), COALESCE(inspection_date, ''), COALESCE(person_visited, ''),
+			COALESCE(road_size, ''), rera_registered, COALESCE(rera_number, ''),
 			COALESCE(type_of_case, ''), COALESCE(bank_name, ''), COALESCE(applicant_name, ''), COALESCE(project_name, ''), COALESCE(property_address, ''),
 			COALESCE(landmark, ''), COALESCE(person_met_at_site, ''), COALESCE(relation_with_applicant, ''),
 			COALESCE(boundary_east, ''), COALESCE(boundary_west, ''), COALESCE(boundary_north, ''), COALESCE(boundary_south, ''),
 			COALESCE(approach_road, ''), COALESCE(road_width, ''), COALESCE(road_width_unit, ''),
 			COALESCE(num_floors, ''), COALESCE(total_buildings, ''), COALESCE(num_wings, ''), COALESCE(total_flats, ''), COALESCE(per_floor_flats, ''),
-			flat_type, COALESCE(carpet_area, ''), COALESCE(super_built_up_area, ''),
+			flat_type, COALESCE(carpet_area, ''), COALESCE(super_built_up_area, ''), measurements,
 			COALESCE(occupancy_status, ''), COALESCE(occupant_name, ''), COALESCE(occupied_since, ''), COALESCE(building_occupancy_percent, ''),
 			COALESCE(age_of_building, ''), COALESCE(surrounding_development_percent, ''), COALESCE(num_lifts, ''),
 			COALESCE(approx_rent, ''), COALESCE(market_rate, ''),
@@ -247,17 +260,18 @@ func GetInspectionByID(id string) (*models.Inspection, error) {
 			COALESCE(windows_type, ''), COALESCE(ms_grill, ''),
 			COALESCE(rcc_work, ''), COALESCE(brick_work, ''), COALESCE(internal_plaster, ''), COALESCE(external_plaster, ''), COALESCE(flooring_work, ''),
 			COALESCE(window_door_fitting, ''), COALESCE(painting_finishing, ''), labours_at_site, COALESCE(num_labours, ''),
-			construction_material_at_site, created_by_user_id
+			construction_material_at_site, COALESCE(critical_remarks, ''), created_by_user_id
 		FROM inspections WHERE id = ?`)
 	err := DB.QueryRow(query, id).Scan(
 		&i.ID, &i.CreatedAt, &i.UpdatedAt, &i.Status,
 		&i.EmployeeName, &i.Location, &i.InspectionDate, &i.PersonVisited,
+		&i.RoadSize, &i.ReraRegistered, &i.ReraNumber,
 		&i.TypeOfCase, &i.BankName, &i.ApplicantName, &i.ProjectName, &i.PropertyAddress,
 		&i.Landmark, &i.PersonMetAtSite, &i.RelationWithApplicant,
 		&i.BoundaryEast, &i.BoundaryWest, &i.BoundaryNorth, &i.BoundarySouth,
 		&i.ApproachRoad, &i.RoadWidth, &i.RoadWidthUnit,
 		&i.NumFloors, &i.TotalBuildings, &i.NumWings, &i.TotalFlats, &i.PerFloorFlats,
-		&flatType, &i.CarpetArea, &i.SuperBuiltUpArea,
+		&flatType, &i.CarpetArea, &i.SuperBuiltUpArea, &measurements,
 		&i.OccupancyStatus, &i.OccupantName, &i.OccupiedSince, &i.BuildingOccupancyPercent,
 		&i.AgeOfBuilding, &i.SurroundingDevelopmentPercent, &i.NumLifts,
 		&i.ApproxRent, &i.MarketRate,
@@ -266,7 +280,7 @@ func GetInspectionByID(id string) (*models.Inspection, error) {
 		&i.WindowsType, &i.MSGrill,
 		&i.RCCWork, &i.BrickWork, &i.InternalPlaster, &i.ExternalPlaster, &i.FlooringWork,
 		&i.WindowDoorFitting, &i.PaintingFinishing, &i.LaboursAtSite, &i.NumLabours,
-		&i.ConstructionMaterialAtSite, &createdByUserID,
+		&i.ConstructionMaterialAtSite, &i.CriticalRemarks, &createdByUserID,
 	)
 	if err != nil {
 		return nil, err
@@ -278,6 +292,10 @@ func GetInspectionByID(id string) (*models.Inspection, error) {
 
 	if flatType.Valid {
 		i.FlatType.Scan(flatType.String)
+	}
+
+	if measurements.Valid {
+		i.Measurements.Scan(measurements.String)
 	}
 
 	// Get photos
@@ -343,6 +361,18 @@ func UpdateInspection(id string, req models.UpdateInspectionRequest) (*models.In
 	if req.PersonVisited != nil {
 		query += ", person_visited = ?"
 		args = append(args, *req.PersonVisited)
+	}
+	if req.RoadSize != nil {
+		query += ", road_size = ?"
+		args = append(args, *req.RoadSize)
+	}
+	if req.ReraRegistered != nil {
+		query += ", rera_registered = ?"
+		args = append(args, *req.ReraRegistered)
+	}
+	if req.ReraNumber != nil {
+		query += ", rera_number = ?"
+		args = append(args, *req.ReraNumber)
 	}
 	if req.TypeOfCase != nil {
 		query += ", type_of_case = ?"
@@ -436,6 +466,11 @@ func UpdateInspection(id string, req models.UpdateInspectionRequest) (*models.In
 	if req.SuperBuiltUpArea != nil {
 		query += ", super_built_up_area = ?"
 		args = append(args, *req.SuperBuiltUpArea)
+	}
+	if req.Measurements != nil {
+		value, _ := req.Measurements.Value()
+		query += ", measurements = ?"
+		args = append(args, value)
 	}
 	if req.OccupancyStatus != nil {
 		query += ", occupancy_status = ?"
@@ -548,6 +583,10 @@ func UpdateInspection(id string, req models.UpdateInspectionRequest) (*models.In
 	if req.ConstructionMaterialAtSite != nil {
 		query += ", construction_material_at_site = ?"
 		args = append(args, *req.ConstructionMaterialAtSite)
+	}
+	if req.CriticalRemarks != nil {
+		query += ", critical_remarks = ?"
+		args = append(args, *req.CriticalRemarks)
 	}
 
 	query += " WHERE id = ?"

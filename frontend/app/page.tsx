@@ -16,7 +16,9 @@ import {
   Sparkles,
   Navigation,
   ExternalLink,
-  UserCircle
+  UserCircle,
+  Ruler,
+  FileCheck
 } from "lucide-react";
 
 export default function HomePage() {
@@ -35,6 +37,9 @@ export default function HomePage() {
     person_visited: "",
     property_address: "",
     applicant_name: "",
+    road_size: "",
+    rera_registered: false,
+    rera_number: "",
   });
 
   // Redirect to login if not authenticated
@@ -311,6 +316,68 @@ export default function HomePage() {
                   placeholder="Name of person visited"
                   className="input-field"
                 />
+              </div>
+            </div>
+
+            {/* Road Size & RERA - Side by side */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div>
+                <label htmlFor="road_size" className="form-label">
+                  <Ruler className="w-4 h-4 inline mr-2 text-primary-600" />
+                  Road Size
+                </label>
+                <input
+                  type="text"
+                  id="road_size"
+                  name="road_size"
+                  value={formData.road_size}
+                  onChange={handleInputChange}
+                  placeholder="e.g., 30 ft"
+                  className="input-field"
+                />
+              </div>
+
+              <div>
+                <label className="form-label">
+                  <FileCheck className="w-4 h-4 inline mr-2 text-primary-600" />
+                  RERA Registered
+                </label>
+                <div className="flex gap-3 mb-2">
+                  {["Yes", "No"].map((option) => (
+                    <label
+                      key={option}
+                      className={`flex items-center gap-2 px-5 py-2.5 rounded-lg border cursor-pointer transition-all duration-200 ${
+                        (option === "Yes" ? formData.rera_registered : !formData.rera_registered)
+                          ? "border-primary-500 bg-primary-50 text-primary-700"
+                          : "border-gray-200 hover:border-primary-300"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="rera_registered"
+                        checked={option === "Yes" ? formData.rera_registered : !formData.rera_registered}
+                        onChange={() => setFormData(prev => ({
+                          ...prev,
+                          rera_registered: option === "Yes",
+                          rera_number: option === "No" ? "" : prev.rera_number,
+                        }))}
+                        className="sr-only"
+                      />
+                      <span className="text-sm font-medium">{option}</span>
+                    </label>
+                  ))}
+                </div>
+                {formData.rera_registered && (
+                  <input
+                    type="text"
+                    id="rera_number"
+                    name="rera_number"
+                    value={formData.rera_number}
+                    onChange={handleInputChange}
+                    placeholder="Enter RERA No."
+                    className="input-field"
+                  />
+                )}
               </div>
             </div>
 

@@ -30,6 +30,12 @@ export interface UpdateUserRequest {
   is_active?: boolean;
 }
 
+export interface MeasurementRow {
+  description: string;
+  length: number;
+  width: number;
+}
+
 export interface Inspection {
   id: string;
   created_at: string;
@@ -41,6 +47,11 @@ export interface Inspection {
   location: string;
   inspection_date: string;
   person_visited: string;
+
+  // Initial Info (continued)
+  road_size: string;
+  rera_registered: boolean;
+  rera_number: string;
 
   // Basic Info
   type_of_case: string;
@@ -70,6 +81,7 @@ export interface Inspection {
   flat_type: string[];
   carpet_area: string;
   super_built_up_area: string;
+  measurements: MeasurementRow[];
 
   // Occupancy
   occupancy_status: string;
@@ -111,6 +123,9 @@ export interface Inspection {
   num_labours: string;
   construction_material_at_site: boolean;
 
+  // Remarks
+  critical_remarks: string;
+
   // Photos
   photos: Photo[];
 }
@@ -131,6 +146,9 @@ export interface CreateInspectionRequest {
   person_visited: string;
   property_address: string;
   applicant_name: string;
+  road_size: string;
+  rera_registered: boolean;
+  rera_number: string;
 }
 
 export interface UpdateInspectionRequest extends Partial<Omit<Inspection, "id" | "created_at" | "updated_at" | "photos">> {}

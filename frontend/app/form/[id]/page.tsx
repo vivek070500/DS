@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Header from "@/components/Header";
 import { inspectionApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import type { Inspection, UpdateInspectionRequest } from "@/lib/types";
+import type { Inspection, UpdateInspectionRequest, MeasurementRow } from "@/lib/types";
 import {
   CASE_TYPES,
   FLAT_TYPES,
@@ -34,6 +34,12 @@ import {
   UserCheck,
   Navigation,
   ExternalLink,
+  Plus,
+  Trash2,
+  AlertTriangle,
+  Lock,
+  MessageSquareWarning,
+  CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -69,6 +75,44 @@ export default function FormPage() {
   const [formData, setFormData] = useState<UpdateInspectionRequest>({});
   const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | null>(null);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const formDataRef = useRef(formData);
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hasLoadedRef = useRef(false);
+  const isSubmitted = inspection?.status === "submitted" || inspection?.status === "completed";
+
+  useEffect(() => {
+    formDataRef.current = formData;
+  }, [formData]);
+
+  // Debounced auto-save: 3 seconds after last change
+  useEffect(() => {
+    if (isSubmitted || isLoading || !hasLoadedRef.current) return;
+
+    // Save to localStorage immediately as safety net
+    try {
+      localStorage.setItem(`inspection_draft_${id}`, JSON.stringify(formData));
+    } catch { /* ignore quota errors */ }
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      try {
+        setAutoSaveStatus("saving");
+        await inspectionApi.update(id, formDataRef.current);
+        setLastSaved(new Date());
+        setAutoSaveStatus("saved");
+        setTimeout(() => setAutoSaveStatus("idle"), 2000);
+      } catch {
+        setAutoSaveStatus("idle");
+      }
+    }, 3000);
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [formData, id, isSubmitted, isLoading]);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -86,7 +130,23 @@ export default function FormPage() {
     try {
       const data = await inspectionApi.getById(id);
       setInspection(data);
-      setFormData(data);
+
+      // Check localStorage for unsaved changes newer than server data
+      try {
+        const cached = localStorage.getItem(`inspection_draft_${id}`);
+        if (cached) {
+          const cachedData = JSON.parse(cached);
+          // Use cached version (it has the latest edits)
+          setFormData({ ...data, ...cachedData });
+          localStorage.removeItem(`inspection_draft_${id}`);
+        } else {
+          setFormData(data);
+        }
+      } catch {
+        setFormData(data);
+      }
+
+      hasLoadedRef.current = true;
     } catch (error) {
       console.error("Error loading inspection:", error);
       alert("Failed to load inspection");
@@ -161,10 +221,39 @@ export default function FormPage() {
     setFormData((prev) => ({ ...prev, flat_type: newTypes }));
   };
 
+  const handleMeasurementChange = (index: number, field: keyof MeasurementRow, value: string) => {
+    const current = formData.measurements || [];
+    const updated = [...current];
+    if (field === "description") {
+      updated[index] = { ...updated[index], [field]: value };
+    } else {
+      updated[index] = { ...updated[index], [field]: parseFloat(value) || 0 };
+    }
+    setFormData((prev) => ({ ...prev, measurements: updated }));
+  };
+
+  const addMeasurementRow = () => {
+    const current = formData.measurements || [];
+    setFormData((prev) => ({
+      ...prev,
+      measurements: [...current, { description: "", length: 0, width: 0 }],
+    }));
+  };
+
+  const removeMeasurementRow = (index: number) => {
+    const current = formData.measurements || [];
+    setFormData((prev) => ({
+      ...prev,
+      measurements: current.filter((_, i) => i !== index),
+    }));
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
       await inspectionApi.update(id, formData);
+      localStorage.removeItem(`inspection_draft_${id}`);
+      setLastSaved(new Date());
       alert("Saved successfully!");
     } catch (error) {
       console.error("Error saving:", error);
@@ -174,10 +263,12 @@ export default function FormPage() {
     }
   };
 
-  const handleSubmit = async () => {
+  const handleSubmitConfirmed = async () => {
+    setShowSubmitConfirm(false);
     setIsSaving(true);
     try {
       await inspectionApi.update(id, { ...formData, status: "submitted" });
+      localStorage.removeItem(`inspection_draft_${id}`);
       router.push(`/preview/${id}`);
     } catch (error) {
       console.error("Error submitting:", error);
@@ -213,7 +304,59 @@ export default function FormPage() {
     <div className="min-h-screen pb-24">
       <Header />
 
+      {/* Submit Confirmation Modal */}
+      {showSubmitConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fade-in">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-6 h-6 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-heading text-lg font-bold text-gray-900">Confirm Submission</h3>
+                <p className="text-sm text-gray-500">This action cannot be undone</p>
+              </div>
+            </div>
+            <p className="text-gray-600 mb-6">
+              Once submitted, this inspection form <strong>cannot be edited again</strong>. Please make sure all details are correct before proceeding.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowSubmitConfirm(false)}
+                className="btn-secondary px-5"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitConfirmed}
+                className="btn-primary px-5 flex items-center gap-2"
+              >
+                Yes, Submit
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <main className="max-w-5xl mx-auto px-4 py-8">
+        {/* Submitted Banner */}
+        {isSubmitted && (
+          <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3 animate-fade-in">
+            <Lock className="w-5 h-5 text-amber-600 flex-shrink-0" />
+            <div>
+              <p className="font-medium text-amber-800">This inspection has been submitted</p>
+              <p className="text-sm text-amber-600">Submitted forms are read-only and cannot be edited.</p>
+            </div>
+            <button
+              onClick={() => router.push(`/preview/${id}`)}
+              className="ml-auto btn-secondary text-sm px-4 py-2 whitespace-nowrap"
+            >
+              View Preview
+            </button>
+          </div>
+        )}
+
         {/* Progress Header */}
         <div className="mb-8 animate-fade-in">
           <div className="flex items-center justify-between mb-4">
@@ -221,22 +364,41 @@ export default function FormPage() {
               <h2 className="font-heading text-2xl font-bold text-gray-900">
                 Property Inspection Form
               </h2>
-              <p className="text-gray-500 text-sm mt-1">
-                Location: {inspection?.location}
-              </p>
+              <div className="flex items-center gap-3 mt-1">
+                <p className="text-gray-500 text-sm">
+                  Location: {inspection?.location}
+                </p>
+                {autoSaveStatus === "saving" && (
+                  <span className="text-xs text-gray-400 flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Saving...
+                  </span>
+                )}
+                {autoSaveStatus === "saved" && (
+                  <span className="text-xs text-green-500 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Saved
+                  </span>
+                )}
+                {lastSaved && autoSaveStatus === "idle" && (
+                  <span className="text-xs text-gray-400">
+                    Last saved {lastSaved.toLocaleTimeString()}
+                  </span>
+                )}
+              </div>
             </div>
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="btn-secondary flex items-center gap-2"
-            >
-              {isSaving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4" />
-              )}
-              Save Draft
-            </button>
+            {!isSubmitted && (
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="btn-secondary flex items-center gap-2"
+              >
+                {isSaving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+                Save Draft
+              </button>
+            )}
           </div>
 
           {/* Tab Navigation */}
@@ -260,7 +422,7 @@ export default function FormPage() {
         </div>
 
         {/* Form Content */}
-        <div className="card p-6 sm:p-8 animate-fade-in animation-delay-100">
+        <fieldset disabled={isSubmitted} className="card p-6 sm:p-8 animate-fade-in animation-delay-100">
           {/* Initial Info Tab */}
           {activeTab === "initial" && (
             <div className="space-y-6">
@@ -394,6 +556,65 @@ export default function FormPage() {
                   placeholder="Enter complete property address"
                   className="input-field min-h-[80px]"
                 />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div>
+                  <label className="form-label">
+                    <Ruler className="w-4 h-4 inline mr-2 text-primary-600" />
+                    Road Size
+                  </label>
+                  <input
+                    type="text"
+                    name="road_size"
+                    value={formData.road_size || ""}
+                    onChange={handleInputChange}
+                    className="input-field"
+                    placeholder="e.g., 30 ft"
+                  />
+                </div>
+
+                <div>
+                  <label className="form-label">
+                    RERA Registered
+                  </label>
+                  <div className="flex gap-3 mb-2">
+                    {["Yes", "No"].map((option) => (
+                      <label
+                        key={option}
+                        className={cn(
+                          "flex items-center gap-2 px-5 py-2.5 rounded-lg border cursor-pointer transition-all duration-200",
+                          (option === "Yes" ? formData.rera_registered : !formData.rera_registered)
+                            ? "border-primary-500 bg-primary-50 text-primary-700"
+                            : "border-gray-200 hover:border-primary-300"
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name="rera_registered_form"
+                          checked={option === "Yes" ? formData.rera_registered : !formData.rera_registered}
+                          onChange={() => setFormData(prev => ({
+                            ...prev,
+                            rera_registered: option === "Yes",
+                            rera_number: option === "No" ? "" : prev.rera_number,
+                          }))}
+                          className="sr-only"
+                        />
+                        <span className="text-sm font-medium">{option}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {formData.rera_registered && (
+                    <input
+                      type="text"
+                      name="rera_number"
+                      value={formData.rera_number || ""}
+                      onChange={handleInputChange}
+                      className="input-field"
+                      placeholder="Enter RERA No."
+                    />
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -664,6 +885,109 @@ export default function FormPage() {
                     </label>
                   ))}
                 </div>
+              </div>
+
+              {/* Measurements Table */}
+              <div>
+                <h4 className="font-semibold text-gray-700 flex items-center gap-2 mt-4 mb-4">
+                  <Ruler className="w-4 h-4 text-primary-600" />
+                  Measurements
+                </h4>
+
+                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-gray-50 text-left text-sm font-medium text-gray-600">
+                        <th className="px-4 py-3">Description</th>
+                        <th className="px-4 py-3 w-28">Length</th>
+                        <th className="px-4 py-3 w-28">Width</th>
+                        <th className="px-4 py-3 w-28">Total</th>
+                        <th className="px-4 py-3 w-14"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(formData.measurements || []).map((row, index) => {
+                        const total = (row.length || 0) * (row.width || 0);
+                        return (
+                          <tr key={index} className="border-t border-gray-100">
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={row.description}
+                                onChange={(e) => handleMeasurementChange(index, "description", e.target.value)}
+                                className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none text-sm"
+                                placeholder="e.g., Hall"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="number"
+                                step="0.1"
+                                value={row.length || ""}
+                                onChange={(e) => handleMeasurementChange(index, "length", e.target.value)}
+                                className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none text-sm"
+                                placeholder="0"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="number"
+                                step="0.1"
+                                value={row.width || ""}
+                                onChange={(e) => handleMeasurementChange(index, "width", e.target.value)}
+                                className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none text-sm"
+                                placeholder="0"
+                              />
+                            </td>
+                            <td className="px-4 py-2 text-sm font-medium text-gray-700">
+                              {total > 0 ? total.toFixed(2) : "—"}
+                            </td>
+                            <td className="px-3 py-2">
+                              <button
+                                type="button"
+                                onClick={() => removeMeasurementRow(index)}
+                                className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {(formData.measurements || []).length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-400">
+                            No measurements added yet
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                    {(formData.measurements || []).length > 0 && (
+                      <tfoot>
+                        <tr className="border-t-2 border-gray-200 bg-gray-50">
+                          <td colSpan={3} className="px-4 py-3 text-sm font-semibold text-gray-700 text-right">
+                            Total Area:
+                          </td>
+                          <td className="px-4 py-3 text-sm font-bold text-primary-700">
+                            {(formData.measurements || [])
+                              .reduce((sum, row) => sum + (row.length || 0) * (row.width || 0), 0)
+                              .toFixed(2)}
+                          </td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={addMeasurementRow}
+                  className="mt-3 flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors border border-dashed border-primary-300"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Row
+                </button>
               </div>
             </div>
           )}
@@ -1219,9 +1543,25 @@ export default function FormPage() {
                   </label>
                 </div>
               </div>
+
+              {/* Critical Remarks */}
+              <div className="mt-8 pt-6 border-t border-gray-200">
+                <h4 className="font-semibold text-gray-700 flex items-center gap-2 mb-3">
+                  <MessageSquareWarning className="w-4 h-4 text-red-500" />
+                  Critical Remarks (if any)
+                </h4>
+                <textarea
+                  name="critical_remarks"
+                  value={formData.critical_remarks || ""}
+                  onChange={handleInputChange}
+                  disabled={isSubmitted}
+                  className="input-field min-h-[120px]"
+                  placeholder="Enter any critical observations, discrepancies, or important notes about this inspection..."
+                />
+              </div>
             </div>
           )}
-        </div>
+        </fieldset>
 
         {/* Bottom Navigation */}
         <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-gray-100 py-4 px-4">
@@ -1248,20 +1588,30 @@ export default function FormPage() {
 
             <div className="flex gap-3">
               {activeTab === "construction" ? (
-                <button
-                  onClick={handleSubmit}
-                  disabled={isSaving}
-                  className="btn-primary flex items-center gap-2"
-                >
-                  {isSaving ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      Submit & Preview
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
+                isSubmitted ? (
+                  <button
+                    onClick={() => router.push(`/preview/${id}`)}
+                    className="btn-primary flex items-center gap-2"
+                  >
+                    View Preview
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setShowSubmitConfirm(true)}
+                    disabled={isSaving}
+                    className="btn-primary flex items-center gap-2"
+                  >
+                    {isSaving ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        Submit & Preview
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                )
               ) : (
                 <button
                   onClick={goToNextTab}

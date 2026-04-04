@@ -86,6 +86,14 @@ func GenerateInspectionPDF(inspection *models.Inspection) (string, error) {
 	pdf.CellFormat(190, 7, "BASIC INFORMATION", "1", 1, "C", true, 0, "")
 	pdf.SetTextColor(0, 0, 0)
 
+	// Road Size and RERA
+	tableRow("Road Size", inspection.RoadSize)
+	reraValue := "No"
+	if inspection.ReraRegistered {
+		reraValue = fmt.Sprintf("Yes - %s", inspection.ReraNumber)
+	}
+	tableRow("RERA Registered", reraValue)
+
 	tableRow("Type of Case", inspection.TypeOfCase)
 	tableRow("Bank Name", inspection.BankName)
 	tableRow("Name of Applicant/s", inspection.ApplicantName)
@@ -140,6 +148,45 @@ func GenerateInspectionPDF(inspection *models.Inspection) (string, error) {
 	tableRow("Type of Flats/Shops/Office", flatTypes)
 	tableRow("Carpet Area / Super Built Up Area", fmt.Sprintf("%s / %s sq ft", inspection.CarpetArea, inspection.SuperBuiltUpArea))
 	tableRow("Number of Lifts", inspection.NumLifts)
+
+	// Measurements Table
+	if len(inspection.Measurements) > 0 {
+		if pdf.GetY() > 200 {
+			pdf.AddPage()
+		}
+
+		pdf.SetFont("Arial", "B", 10)
+		pdf.SetFillColor(headerBg[0], headerBg[1], headerBg[2])
+		pdf.SetTextColor(255, 255, 255)
+		pdf.CellFormat(190, 7, "MEASUREMENTS", "1", 1, "C", true, 0, "")
+		pdf.SetTextColor(0, 0, 0)
+
+		// Table header
+		pdf.SetFont("Arial", "B", 9)
+		pdf.SetFillColor(240, 240, 240)
+		pdf.CellFormat(70, 7, "Description", "1", 0, "C", true, 0, "")
+		pdf.CellFormat(35, 7, "Length", "1", 0, "C", true, 0, "")
+		pdf.CellFormat(35, 7, "Width", "1", 0, "C", true, 0, "")
+		pdf.CellFormat(50, 7, "Total Area", "1", 1, "C", true, 0, "")
+
+		// Table rows
+		pdf.SetFont("Arial", "", 9)
+		totalArea := 0.0
+		for _, m := range inspection.Measurements {
+			area := m.Length * m.Width
+			totalArea += area
+			pdf.CellFormat(70, 7, m.Description, "1", 0, "L", false, 0, "")
+			pdf.CellFormat(35, 7, fmt.Sprintf("%.2f", m.Length), "1", 0, "C", false, 0, "")
+			pdf.CellFormat(35, 7, fmt.Sprintf("%.2f", m.Width), "1", 0, "C", false, 0, "")
+			pdf.CellFormat(50, 7, fmt.Sprintf("%.2f", area), "1", 1, "C", false, 0, "")
+		}
+
+		// Total row
+		pdf.SetFont("Arial", "B", 9)
+		pdf.SetFillColor(240, 253, 250)
+		pdf.CellFormat(140, 7, "Total Area", "1", 0, "R", true, 0, "")
+		pdf.CellFormat(50, 7, fmt.Sprintf("%.2f", totalArea), "1", 1, "C", true, 0, "")
+	}
 
 	// Check if we need a new page
 	if pdf.GetY() > 220 {
@@ -219,6 +266,22 @@ func GenerateInspectionPDF(inspection *models.Inspection) (string, error) {
 			materialAtSite = "Yes"
 		}
 		tableRow("Construction Material at Site", materialAtSite)
+	}
+
+	// Critical Remarks
+	if inspection.CriticalRemarks != "" {
+		if pdf.GetY() > 220 {
+			pdf.AddPage()
+		}
+
+		pdf.SetFont("Arial", "B", 10)
+		pdf.SetFillColor(headerBg[0], headerBg[1], headerBg[2])
+		pdf.SetTextColor(255, 255, 255)
+		pdf.CellFormat(190, 7, "CRITICAL REMARKS", "1", 1, "C", true, 0, "")
+		pdf.SetTextColor(0, 0, 0)
+
+		pdf.SetFont("Arial", "", 9)
+		pdf.MultiCell(190, 6, sanitizeText(inspection.CriticalRemarks), "1", "L", false)
 	}
 
 	// Footer
