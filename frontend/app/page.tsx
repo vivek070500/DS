@@ -30,24 +30,25 @@ export default function HomePage() {
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | null>(null);
   const [photos, setPhotos] = useState<File[]>([]);
-  const [formData, setFormData] = useState(() => {
+  const defaultFormData = {
+    employee_name: "",
+    location: "",
+    inspection_date: new Date().toISOString().split("T")[0],
+    person_visited: "",
+    property_address: "",
+    applicant_name: "",
+    road_size: "",
+    rera_registered: false,
+    rera_number: "",
+  };
+  const [formData, setFormData] = useState<typeof defaultFormData>(() => {
     if (typeof window !== "undefined") {
       try {
         const saved = localStorage.getItem("home_form_draft");
-        if (saved) return JSON.parse(saved);
+        if (saved) return { ...defaultFormData, ...JSON.parse(saved) };
       } catch { /* ignore */ }
     }
-    return {
-      employee_name: "",
-      location: "",
-      inspection_date: new Date().toISOString().split("T")[0],
-      person_visited: "",
-      property_address: "",
-      applicant_name: "",
-      road_size: "",
-      rera_registered: false,
-      rera_number: "",
-    };
+    return defaultFormData;
   });
 
   // Save form data to localStorage on every change
