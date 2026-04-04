@@ -151,6 +151,15 @@ export default function HomePage() {
         await inspectionApi.uploadPhotos(inspection.id, photos);
       }
 
+      // Clear saved draft after successful submission
+      if (user?.id) {
+        localStorage.removeItem(`home_form_draft_${user.id}`);
+        localStorage.removeItem(`home_form_coords_${user.id}`);
+      }
+      setFormData(defaultFormData);
+      setCoordinates(null);
+      setPhotos([]);
+
       router.push(`/form/${inspection.id}`);
     } catch (error) {
       console.error("Error creating inspection:", error);
