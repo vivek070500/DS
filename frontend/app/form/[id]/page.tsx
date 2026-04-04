@@ -272,6 +272,8 @@ export default function FormPage() {
       await inspectionApi.update(id, { ...formData, status: "submitted" });
       const uid = user?.id || "anon";
       localStorage.removeItem(`inspection_draft_${uid}_${id}`);
+      localStorage.removeItem(`home_form_draft_${uid}`);
+      localStorage.removeItem(`home_form_coords_${uid}`);
       router.push(`/preview/${id}`);
     } catch (error) {
       console.error("Error submitting:", error);
