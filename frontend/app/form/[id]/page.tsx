@@ -66,7 +66,7 @@ export default function FormPage() {
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
-  const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, user, isAdmin } = useAuth();
 
   const [activeTab, setActiveTab] = useState<TabKey>("initial");
   const [isLoading, setIsLoading] = useState(true);
@@ -81,7 +81,8 @@ export default function FormPage() {
   const formDataRef = useRef(formData);
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasLoadedRef = useRef(false);
-  const isSubmitted = inspection?.status === "submitted" || inspection?.status === "completed";
+  const isSubmittedStatus = inspection?.status === "submitted" || inspection?.status === "completed";
+  const isLocked = isSubmittedStatus && !isAdmin;
 
   useEffect(() => {
     formDataRef.current = formData;
@@ -89,7 +90,7 @@ export default function FormPage() {
 
   // Debounced auto-save: 3 seconds after last change
   useEffect(() => {
-    if (isSubmitted || isLoading || !hasLoadedRef.current) return;
+    if (isLocked || isLoading || !hasLoadedRef.current) return;
 
     // Save to localStorage immediately as safety net
     try {
@@ -113,7 +114,7 @@ export default function FormPage() {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [formData, id, isSubmitted, isLoading]);
+  }, [formData, id, isLocked, isLoading]);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -346,12 +347,20 @@ export default function FormPage() {
 
       <main className="max-w-5xl mx-auto px-4 py-8">
         {/* Submitted Banner */}
-        {isSubmitted && (
-          <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3 animate-fade-in">
-            <Lock className="w-5 h-5 text-amber-600 flex-shrink-0" />
+        {isSubmittedStatus && (
+          <div className={`mb-6 rounded-xl p-4 flex items-center gap-3 animate-fade-in ${
+            isAdmin ? "bg-blue-50 border border-blue-200" : "bg-amber-50 border border-amber-200"
+          }`}>
+            <Lock className={`w-5 h-5 flex-shrink-0 ${isAdmin ? "text-blue-600" : "text-amber-600"}`} />
             <div>
-              <p className="font-medium text-amber-800">This inspection has been submitted</p>
-              <p className="text-sm text-amber-600">Submitted forms are read-only and cannot be edited.</p>
+              <p className={`font-medium ${isAdmin ? "text-blue-800" : "text-amber-800"}`}>
+                This inspection has been submitted
+              </p>
+              <p className={`text-sm ${isAdmin ? "text-blue-600" : "text-amber-600"}`}>
+                {isAdmin
+                  ? "You have admin access — you can still edit this form."
+                  : "Submitted forms are read-only and cannot be edited."}
+              </p>
             </div>
             <button
               onClick={() => router.push(`/preview/${id}`)}
@@ -390,7 +399,7 @@ export default function FormPage() {
                 )}
               </div>
             </div>
-            {!isSubmitted && (
+            {!isLocked && (
               <button
                 onClick={handleSave}
                 disabled={isSaving}
@@ -427,7 +436,7 @@ export default function FormPage() {
         </div>
 
         {/* Form Content */}
-        <fieldset disabled={isSubmitted} className="card p-6 sm:p-8 animate-fade-in animation-delay-100">
+        <fieldset disabled={isLocked} className="card p-6 sm:p-8 animate-fade-in animation-delay-100">
           {/* Initial Info Tab */}
           {activeTab === "initial" && (
             <div className="space-y-6">
@@ -1559,7 +1568,7 @@ export default function FormPage() {
                   name="critical_remarks"
                   value={formData.critical_remarks || ""}
                   onChange={handleInputChange}
-                  disabled={isSubmitted}
+                  disabled={isLocked}
                   className="input-field min-h-[120px]"
                   placeholder="Enter any critical observations, discrepancies, or important notes about this inspection..."
                 />
@@ -1593,7 +1602,7 @@ export default function FormPage() {
 
             <div className="flex gap-3">
               {activeTab === "construction" ? (
-                isSubmitted ? (
+                isLocked ? (
                   <button
                     onClick={() => router.push(`/preview/${id}`)}
                     className="btn-primary flex items-center gap-2"
