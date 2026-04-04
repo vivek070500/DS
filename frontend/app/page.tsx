@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Header from "@/components/Header";
 import PhotoUploader from "@/components/PhotoUploader";
@@ -51,8 +51,13 @@ export default function HomePage() {
     return defaultFormData;
   });
 
-  // Save form data to localStorage on every change
+  // Save form data to localStorage on every change (skip initial render)
+  const isFirstRender = useRef(true);
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     try {
       localStorage.setItem("home_form_draft", JSON.stringify(formData));
     } catch { /* ignore */ }
