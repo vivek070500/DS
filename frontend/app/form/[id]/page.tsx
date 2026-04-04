@@ -66,7 +66,7 @@ export default function FormPage() {
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, user } = useAuth();
 
   const [activeTab, setActiveTab] = useState<TabKey>("initial");
   const [isLoading, setIsLoading] = useState(true);
@@ -93,7 +93,8 @@ export default function FormPage() {
 
     // Save to localStorage immediately as safety net
     try {
-      localStorage.setItem(`inspection_draft_${id}`, JSON.stringify(formData));
+      const uid = user?.id || "anon";
+      localStorage.setItem(`inspection_draft_${uid}_${id}`, JSON.stringify(formData));
     } catch { /* ignore quota errors */ }
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -133,12 +134,12 @@ export default function FormPage() {
 
       // Check localStorage for unsaved changes newer than server data
       try {
-        const cached = localStorage.getItem(`inspection_draft_${id}`);
+        const uid = user?.id || "anon";
+        const cached = localStorage.getItem(`inspection_draft_${uid}_${id}`);
         if (cached) {
           const cachedData = JSON.parse(cached);
-          // Use cached version (it has the latest edits)
           setFormData({ ...data, ...cachedData });
-          localStorage.removeItem(`inspection_draft_${id}`);
+          localStorage.removeItem(`inspection_draft_${uid}_${id}`);
         } else {
           setFormData(data);
         }
@@ -252,7 +253,8 @@ export default function FormPage() {
     setIsSaving(true);
     try {
       await inspectionApi.update(id, formData);
-      localStorage.removeItem(`inspection_draft_${id}`);
+      const uid = user?.id || "anon";
+      localStorage.removeItem(`inspection_draft_${uid}_${id}`);
       setLastSaved(new Date());
       alert("Saved successfully!");
     } catch (error) {
@@ -268,7 +270,8 @@ export default function FormPage() {
     setIsSaving(true);
     try {
       await inspectionApi.update(id, { ...formData, status: "submitted" });
-      localStorage.removeItem(`inspection_draft_${id}`);
+      const uid = user?.id || "anon";
+      localStorage.removeItem(`inspection_draft_${uid}_${id}`);
       router.push(`/preview/${id}`);
     } catch (error) {
       console.error("Error submitting:", error);

@@ -285,11 +285,19 @@ func GenerateInspectionPDF(inspection *models.Inspection) (string, error) {
 	}
 
 	// Footer
+	if pdf.GetY() > 250 {
+		pdf.AddPage()
+	}
 	pdf.Ln(10)
 	pdf.SetFont("Arial", "B", 9)
-	pdf.CellFormat(95, 7, fmt.Sprintf("Inspected By: %s", sanitizeText(inspection.EmployeeName)), "", 0, "L", false, 0, "")
-	// Sanitize location to remove Hindi/Unicode characters that gofpdf can't render
-	pdf.CellFormat(95, 7, fmt.Sprintf("Location: %s", sanitizeText(inspection.Location)), "", 1, "R", false, 0, "")
+	pdf.CellFormat(40, 7, "Inspected By:", "", 0, "L", false, 0, "")
+	pdf.SetFont("Arial", "", 9)
+	pdf.CellFormat(150, 7, sanitizeText(inspection.EmployeeName), "", 1, "L", false, 0, "")
+
+	pdf.SetFont("Arial", "B", 9)
+	pdf.CellFormat(40, 7, "Location:", "", 0, "L", false, 0, "")
+	pdf.SetFont("Arial", "", 9)
+	pdf.MultiCell(150, 6, sanitizeText(inspection.Location), "", "L", false)
 
 	// Save PDF
 	pdfDir := "generated_pdfs"

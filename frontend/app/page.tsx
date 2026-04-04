@@ -41,27 +41,36 @@ export default function HomePage() {
     rera_registered: false,
     rera_number: "",
   };
-  const [formData, setFormData] = useState<typeof defaultFormData>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem("home_form_draft");
-        if (saved) return { ...defaultFormData, ...JSON.parse(saved) };
-      } catch { /* ignore */ }
-    }
-    return defaultFormData;
-  });
+  const [formData, setFormData] = useState<typeof defaultFormData>(defaultFormData);
+  const hasRestoredRef = useRef(false);
 
-  // Save form data to localStorage on every change (skip initial render)
-  const isFirstRender = useRef(true);
+  // Restore saved draft once user is known
   useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
+    if (!user?.id || hasRestoredRef.current) return;
+    hasRestoredRef.current = true;
     try {
-      localStorage.setItem("home_form_draft", JSON.stringify(formData));
+      const saved = localStorage.getItem(`home_form_draft_${user.id}`);
+      if (saved) setFormData(prev => ({ ...prev, ...JSON.parse(saved) }));
+      const savedCoords = localStorage.getItem(`home_form_coords_${user.id}`);
+      if (savedCoords) setCoordinates(JSON.parse(savedCoords));
     } catch { /* ignore */ }
-  }, [formData]);
+  }, [user?.id]);
+
+  // Save form data to localStorage on every change (skip until restored)
+  useEffect(() => {
+    if (!user?.id || !hasRestoredRef.current) return;
+    try {
+      localStorage.setItem(`home_form_draft_${user.id}`, JSON.stringify(formData));
+    } catch { /* ignore */ }
+  }, [formData, user?.id]);
+
+  // Persist coordinates
+  useEffect(() => {
+    if (!user?.id || !coordinates) return;
+    try {
+      localStorage.setItem(`home_form_coords_${user.id}`, JSON.stringify(coordinates));
+    } catch { /* ignore */ }
+  }, [coordinates, user?.id]);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -142,8 +151,6 @@ export default function HomePage() {
         await inspectionApi.uploadPhotos(inspection.id, photos);
       }
 
-      // Clear saved draft and navigate to form page
-      localStorage.removeItem("home_form_draft");
       router.push(`/form/${inspection.id}`);
     } catch (error) {
       console.error("Error creating inspection:", error);
