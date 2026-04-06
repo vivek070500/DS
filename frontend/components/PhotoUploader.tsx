@@ -35,8 +35,6 @@ export default function PhotoUploader({
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Get current location
   const getCurrentLocation = useCallback(async (): Promise<LocationData | null> => {
@@ -92,7 +90,7 @@ export default function PhotoUploader({
     });
   }, []);
 
-  // Add GPS and timestamp overlay to image
+  // Add GPS and timestamp overlay to image (for file uploads, not camera captures)
   const addOverlayToImage = useCallback(async (
     imageDataUrl: string, 
     location: LocationData | null
@@ -100,130 +98,18 @@ export default function PhotoUploader({
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
-        const canvas = overlayCanvasRef.current;
-        if (!canvas) {
-          resolve(imageDataUrl);
-          return;
-        }
-
+        const canvas = document.createElement('canvas');
         canvas.width = img.width;
         canvas.height = img.height;
         const ctx = canvas.getContext('2d');
-        
-        if (!ctx) {
-          resolve(imageDataUrl);
-          return;
-        }
+        if (!ctx) { resolve(imageDataUrl); return; }
 
-        // Draw original image
         ctx.drawImage(img, 0, 0);
-
-        // Prepare overlay text
-        const now = new Date();
-        const dateStr = now.toLocaleDateString('en-GB', { 
-          day: '2-digit', 
-          month: 'short', 
-          year: 'numeric' 
-        });
-        const timeStr = now.toLocaleTimeString('en-GB', { 
-          hour: '2-digit', 
-          minute: '2-digit', 
-          second: '2-digit',
-          hour12: false 
-        });
-
-        // Calculate font size based on image dimensions
-        const fontSize = Math.max(12, Math.min(img.width, img.height) * 0.025);
-        const padding = fontSize * 0.8;
-        const lineHeight = fontSize * 1.4;
-
-        // Prepare lines
-        const lines: string[] = [];
-        lines.push(`${dateStr} ${timeStr}`);
-        
-        if (location) {
-          lines.push(`${location.lat.toFixed(7)}N ${location.lng.toFixed(8)}E`);
-          
-          // Split address into multiple lines - show full address
-          if (location.address) {
-            const addressParts = location.address.split(", ");
-            let currentLine = "";
-            const maxCharsPerLine = 50; // Increased for better readability
-            
-            for (const part of addressParts) {
-              if (currentLine.length + part.length + 2 > maxCharsPerLine) {
-                if (currentLine) lines.push(currentLine);
-                currentLine = part;
-              } else {
-                currentLine = currentLine ? `${currentLine}, ${part}` : part;
-              }
-            }
-            if (currentLine) lines.push(currentLine);
-          }
-        }
-
-        // Calculate overlay box dimensions
-        ctx.font = `bold ${fontSize}px Arial`;
-        let maxWidth = 0;
-        for (const line of lines) {
-          const metrics = ctx.measureText(line);
-          maxWidth = Math.max(maxWidth, metrics.width);
-        }
-
-        const boxWidth = maxWidth + padding * 2;
-        const boxHeight = lines.length * lineHeight + padding * 2;
-        const boxX = padding;
-        const boxY = img.height - boxHeight - padding;
-
-        // Draw semi-transparent background
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-        ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
-
-        // Draw text
-        ctx.fillStyle = '#FFFF00'; // Yellow text like in the example
-        ctx.font = `bold ${fontSize}px Arial`;
-        ctx.textBaseline = 'top';
-
-        lines.forEach((line, index) => {
-          ctx.fillText(line, boxX + padding, boxY + padding + index * lineHeight);
-        });
-
-        // Draw location pin icon area (small map preview placeholder)
-        if (location) {
-          const mapSize = Math.min(80, img.width * 0.15);
-          const mapX = img.width - mapSize - padding;
-          const mapY = img.height - mapSize - padding;
-          
-          // Draw map background
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-          ctx.fillRect(mapX, mapY, mapSize, mapSize);
-          
-          // Draw border
-          ctx.strokeStyle = '#333';
-          ctx.lineWidth = 2;
-          ctx.strokeRect(mapX, mapY, mapSize, mapSize);
-          
-          // Draw pin icon in center
-          ctx.fillStyle = '#EA4335';
-          ctx.beginPath();
-          const pinX = mapX + mapSize / 2;
-          const pinY = mapY + mapSize / 2;
-          ctx.arc(pinX, pinY - 5, 8, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.beginPath();
-          ctx.moveTo(pinX - 8, pinY - 5);
-          ctx.lineTo(pinX, pinY + 10);
-          ctx.lineTo(pinX + 8, pinY - 5);
-          ctx.fill();
-          
-          // Draw inner circle
-          ctx.fillStyle = '#FFF';
-          ctx.beginPath();
-          ctx.arc(pinX, pinY - 5, 3, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        resolve(canvas.toDataURL('image/jpeg', 0.9));
+        drawOverlayOnCanvas(ctx, img.width, img.height, location);
+        const result = canvas.toDataURL('image/jpeg', 0.75);
+        canvas.width = 0;
+        canvas.height = 0;
+        resolve(result);
       };
       img.src = imageDataUrl;
     });
@@ -446,34 +332,37 @@ export default function PhotoUploader({
   const capturedBlobRef = useRef<Blob | null>(null);
 
   const capturePhoto = async () => {
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
+    if (!videoRef.current) return;
+    const video = videoRef.current;
 
-      const maxDim = 1920;
-      let w = video.videoWidth;
-      let h = video.videoHeight;
-      if (w > maxDim || h > maxDim) {
-        const scale = maxDim / Math.max(w, h);
-        w = Math.round(w * scale);
-        h = Math.round(h * scale);
-      }
-      canvas.width = w;
-      canvas.height = h;
-
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(video, 0, 0, w, h);
-        drawOverlayOnCanvas(ctx, w, h, currentLocation);
-
-        // Get blob directly (no data URL) and a tiny preview URL
-        const blob = await canvasToBlob(canvas, 0.8);
-        capturedBlobRef.current = blob;
-        const previewUrl = URL.createObjectURL(blob);
-        setCapturedPreview(previewUrl);
-        setCapturedFileName(`photo_${Date.now()}.jpg`);
-      }
+    const maxDim = 1280;
+    let w = video.videoWidth;
+    let h = video.videoHeight;
+    if (w > maxDim || h > maxDim) {
+      const scale = maxDim / Math.max(w, h);
+      w = Math.round(w * scale);
+      h = Math.round(h * scale);
     }
+
+    // Create a temporary canvas — iOS reclaims GPU memory when it's dereferenced
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.drawImage(video, 0, 0, w, h);
+    drawOverlayOnCanvas(ctx, w, h, currentLocation);
+
+    const blob = await canvasToBlob(canvas, 0.75);
+    // Immediately release the canvas GPU memory
+    canvas.width = 0;
+    canvas.height = 0;
+
+    capturedBlobRef.current = blob;
+    const previewUrl = URL.createObjectURL(blob);
+    setCapturedPreview(previewUrl);
+    setCapturedFileName(`photo_${Date.now()}.jpg`);
   };
 
   const confirmCapturedPhoto = async () => {
@@ -550,11 +439,6 @@ export default function PhotoUploader({
         className="hidden"
       />
 
-      {/* Hidden canvas for capturing */}
-      <canvas ref={canvasRef} className="hidden" />
-      
-      {/* Hidden canvas for overlay */}
-      <canvas ref={overlayCanvasRef} className="hidden" />
 
       {/* Camera Modal */}
       {showCamera && (
