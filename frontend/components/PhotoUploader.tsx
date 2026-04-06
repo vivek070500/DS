@@ -229,6 +229,33 @@ export default function PhotoUploader({
     });
   }, []);
 
+  const createThumbnail = (dataUrl: string, maxSize: number): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let w = img.width;
+        let h = img.height;
+        if (w > maxSize || h > maxSize) {
+          const scale = maxSize / Math.max(w, h);
+          w = Math.round(w * scale);
+          h = Math.round(h * scale);
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.6));
+        } else {
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  };
+
   const readFileAsDataUrl = (file: File): Promise<string> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -283,7 +310,8 @@ export default function PhotoUploader({
       const newPreviews: string[] = [];
       for (const file of acceptedFiles) {
         const dataUrl = await readFileAsDataUrl(file);
-        newPreviews.push(dataUrl);
+        const thumb = await createThumbnail(dataUrl, 300);
+        newPreviews.push(thumb);
       }
       onPhotosChange([...photosRef.current, ...acceptedFiles]);
       setPreviews((prev) => [...prev, ...newPreviews]);
@@ -363,14 +391,23 @@ export default function PhotoUploader({
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+
+      // Scale down large captures to save memory on mobile
+      const maxDim = 1920;
+      let w = video.videoWidth;
+      let h = video.videoHeight;
+      if (w > maxDim || h > maxDim) {
+        const scale = maxDim / Math.max(w, h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+      canvas.width = w;
+      canvas.height = h;
       
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.drawImage(video, 0, 0);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        ctx.drawImage(video, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
         const fileName = `photo_${Date.now()}.jpg`;
         
         const overlayedDataUrl = await addOverlayToImage(dataUrl, currentLocation);
@@ -386,7 +423,10 @@ export default function PhotoUploader({
       const blob = await response.blob();
       const file = new File([blob], capturedFileName, { type: 'image/jpeg' });
       onPhotosChange([...photosRef.current, file]);
-      setPreviews((prev) => [...prev, capturedPreview]);
+
+      // Create a small thumbnail for the preview grid to save memory
+      const thumbUrl = await createThumbnail(capturedPreview, 300);
+      setPreviews((prev) => [...prev, thumbUrl]);
       setCapturedPreview(null);
       setCapturedFileName("");
     }
