@@ -381,18 +381,75 @@ export default function PhotoUploader({
       stream.getTracks().forEach(track => track.stop());
       setStream(null);
     }
+    if (capturedPreview) URL.revokeObjectURL(capturedPreview);
+    capturedBlobRef.current = null;
     setShowCamera(false);
     setCameraError(null);
     setCapturedPreview(null);
     setCapturedFileName("");
-  }, [stream]);
+  }, [stream, capturedPreview]);
+
+  // Draw overlay directly on a canvas context (no intermediate data URLs)
+  const drawOverlayOnCanvas = (ctx: CanvasRenderingContext2D, w: number, h: number, location: LocationData | null) => {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    const fontSize = Math.max(12, Math.min(w, h) * 0.025);
+    const padding = fontSize * 0.8;
+    const lineHeight = fontSize * 1.4;
+
+    const lines: string[] = [`${dateStr} ${timeStr}`];
+    if (location) {
+      lines.push(`${location.lat.toFixed(7)}N ${location.lng.toFixed(8)}E`);
+      if (location.address) {
+        const parts = location.address.split(", ");
+        let cur = "";
+        for (const part of parts) {
+          if (cur.length + part.length + 2 > 50) { if (cur) lines.push(cur); cur = part; }
+          else { cur = cur ? `${cur}, ${part}` : part; }
+        }
+        if (cur) lines.push(cur);
+      }
+    }
+
+    ctx.font = `bold ${fontSize}px Arial`;
+    let maxW = 0;
+    for (const l of lines) maxW = Math.max(maxW, ctx.measureText(l).width);
+    const boxW = maxW + padding * 2, boxH = lines.length * lineHeight + padding * 2;
+    const boxX = padding, boxY = h - boxH - padding;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = '#FFFF00';
+    ctx.font = `bold ${fontSize}px Arial`;
+    ctx.textBaseline = 'top';
+    lines.forEach((l, i) => ctx.fillText(l, boxX + padding, boxY + padding + i * lineHeight));
+
+    if (location) {
+      const ms = Math.min(80, w * 0.15), mx = w - ms - padding, my = h - ms - padding;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fillRect(mx, my, ms, ms);
+      ctx.strokeStyle = '#333'; ctx.lineWidth = 2; ctx.strokeRect(mx, my, ms, ms);
+      ctx.fillStyle = '#EA4335';
+      ctx.beginPath(); ctx.arc(mx + ms / 2, my + ms / 2 - 5, 8, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(mx + ms / 2 - 8, my + ms / 2 - 5); ctx.lineTo(mx + ms / 2, my + ms / 2 + 10); ctx.lineTo(mx + ms / 2 + 8, my + ms / 2 - 5); ctx.fill();
+      ctx.fillStyle = '#FFF'; ctx.beginPath(); ctx.arc(mx + ms / 2, my + ms / 2 - 5, 3, 0, Math.PI * 2); ctx.fill();
+    }
+  };
+
+  // Convert canvas to blob without data URL intermediates
+  const canvasToBlob = (canvas: HTMLCanvasElement, quality: number): Promise<Blob> => {
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => resolve(blob!), 'image/jpeg', quality);
+    });
+  };
+
+  const capturedBlobRef = useRef<Blob | null>(null);
 
   const capturePhoto = async () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
 
-      // Scale down large captures to save memory on mobile
       const maxDim = 1920;
       let w = video.videoWidth;
       let h = video.videoHeight;
@@ -403,36 +460,38 @@ export default function PhotoUploader({
       }
       canvas.width = w;
       canvas.height = h;
-      
+
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(video, 0, 0, w, h);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-        const fileName = `photo_${Date.now()}.jpg`;
-        
-        const overlayedDataUrl = await addOverlayToImage(dataUrl, currentLocation);
-        setCapturedPreview(overlayedDataUrl);
-        setCapturedFileName(fileName);
+        drawOverlayOnCanvas(ctx, w, h, currentLocation);
+
+        // Get blob directly (no data URL) and a tiny preview URL
+        const blob = await canvasToBlob(canvas, 0.8);
+        capturedBlobRef.current = blob;
+        const previewUrl = URL.createObjectURL(blob);
+        setCapturedPreview(previewUrl);
+        setCapturedFileName(`photo_${Date.now()}.jpg`);
       }
     }
   };
 
   const confirmCapturedPhoto = async () => {
-    if (capturedPreview) {
-      const response = await fetch(capturedPreview);
-      const blob = await response.blob();
-      const file = new File([blob], capturedFileName, { type: 'image/jpeg' });
+    if (capturedPreview && capturedBlobRef.current) {
+      const file = new File([capturedBlobRef.current], capturedFileName, { type: 'image/jpeg' });
       onPhotosChange([...photosRef.current, file]);
 
-      // Create a small thumbnail for the preview grid to save memory
-      const thumbUrl = await createThumbnail(capturedPreview, 300);
-      setPreviews((prev) => [...prev, thumbUrl]);
+      // Use the object URL directly as thumbnail (very cheap, no copy)
+      setPreviews((prev) => [...prev, capturedPreview]);
+      capturedBlobRef.current = null;
       setCapturedPreview(null);
       setCapturedFileName("");
     }
   };
 
   const retakePhoto = () => {
+    if (capturedPreview) URL.revokeObjectURL(capturedPreview);
+    capturedBlobRef.current = null;
     setCapturedPreview(null);
     setCapturedFileName("");
   };
