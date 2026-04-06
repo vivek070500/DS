@@ -30,6 +30,9 @@ export default function PhotoUploader({
   const [capturedPreview, setCapturedPreview] = useState<string | null>(null);
   const [capturedFileName, setCapturedFileName] = useState<string>("");
   
+  const photosRef = useRef(photos);
+  photosRef.current = photos;
+
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -257,9 +260,9 @@ export default function PhotoUploader({
       newPreviews.push(dataUrl);
     }
 
-    onPhotosChange([...photos, ...newFiles]);
+    onPhotosChange([...photosRef.current, ...newFiles]);
     setPreviews((prev) => [...prev, ...newPreviews]);
-  }, [photos, onPhotosChange, getCurrentLocation, addOverlayToImage]);
+  }, [onPhotosChange, getCurrentLocation, addOverlayToImage]);
 
   const addPhotoFromDataUrl = useCallback(async (dataUrl: string, fileName: string, location: LocationData | null) => {
     // Add overlay with GPS and timestamp
@@ -270,11 +273,10 @@ export default function PhotoUploader({
       .then(res => res.blob())
       .then(blob => {
         const file = new File([blob], fileName, { type: 'image/jpeg' });
-        const newPhotos = [...photos, file];
-        onPhotosChange(newPhotos);
+        onPhotosChange([...photosRef.current, file]);
         setPreviews((prev) => [...prev, overlayedDataUrl]);
       });
-  }, [photos, onPhotosChange, addOverlayToImage]);
+  }, [onPhotosChange, addOverlayToImage]);
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
@@ -283,10 +285,10 @@ export default function PhotoUploader({
         const dataUrl = await readFileAsDataUrl(file);
         newPreviews.push(dataUrl);
       }
-      onPhotosChange([...photos, ...acceptedFiles]);
+      onPhotosChange([...photosRef.current, ...acceptedFiles]);
       setPreviews((prev) => [...prev, ...newPreviews]);
     },
-    [photos, onPhotosChange]
+    [onPhotosChange]
   );
 
   const handleCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -306,7 +308,7 @@ export default function PhotoUploader({
         newPreviews.push(overlayedDataUrl);
       }
 
-      onPhotosChange([...photos, ...newFiles]);
+      onPhotosChange([...photosRef.current, ...newFiles]);
       setPreviews((prev) => [...prev, ...newPreviews]);
     }
     if (cameraInputRef.current) {
@@ -383,12 +385,10 @@ export default function PhotoUploader({
       const response = await fetch(capturedPreview);
       const blob = await response.blob();
       const file = new File([blob], capturedFileName, { type: 'image/jpeg' });
-      const newPhotos = [...photos, file];
-      onPhotosChange(newPhotos);
+      onPhotosChange([...photosRef.current, file]);
       setPreviews((prev) => [...prev, capturedPreview]);
       setCapturedPreview(null);
       setCapturedFileName("");
-      // Stay in camera mode so user can take more photos
     }
   };
 
