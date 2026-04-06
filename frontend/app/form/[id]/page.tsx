@@ -1578,21 +1578,21 @@ export default function FormPage() {
         </fieldset>
 
         {/* Bottom Navigation */}
-        <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-gray-100 py-4 px-4">
+        <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-gray-100 py-3 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="max-w-5xl mx-auto flex justify-between items-center">
             <div className="flex gap-3">
               {activeTab === "initial" ? (
                 <button
                   onClick={() => router.push("/")}
-                  className="btn-secondary flex items-center gap-2"
+                  className="btn-secondary flex items-center gap-2 text-sm"
                 >
                   <ArrowLeft className="w-4 h-4" />
-                  Back to Home
+                  <span className="hidden sm:inline">Back to</span> Home
                 </button>
               ) : (
                 <button
                   onClick={goToPrevTab}
-                  className="btn-secondary flex items-center gap-2"
+                  className="btn-secondary flex items-center gap-2 text-sm"
                 >
                   <ArrowLeft className="w-4 h-4" />
                   Previous
@@ -1629,7 +1629,7 @@ export default function FormPage() {
               ) : (
                 <button
                   onClick={goToNextTab}
-                  className="btn-primary flex items-center gap-2"
+                  className="btn-primary flex items-center gap-2 text-sm"
                 >
                   Next
                   <ArrowRight className="w-4 h-4" />
