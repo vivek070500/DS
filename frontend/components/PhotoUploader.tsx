@@ -397,12 +397,12 @@ export default function PhotoUploader({
     setCapturedFileName("");
   };
 
-  // Set video source when stream changes
+  // Set video source when stream changes or when returning from preview
   useEffect(() => {
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
     }
-  }, [stream]);
+  }, [stream, capturedPreview]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -461,29 +461,29 @@ export default function PhotoUploader({
       {showCamera && (
         <div className="fixed inset-0 bg-black z-50 flex flex-col" style={{ height: '100dvh' }}>
           {/* Header */}
-          <div className="bg-gray-900 p-2 sm:p-3 flex items-center justify-between flex-shrink-0">
-            <div>
+          <div className="bg-gray-900/95 p-2 sm:p-3 flex items-center justify-between flex-shrink-0">
+            <div className="flex items-center gap-3">
               <h3 className="text-white font-semibold flex items-center gap-2 text-sm">
                 <Camera className="w-4 h-4" />
-                {capturedPreview ? "Review Photo" : "Take a Photo"}
+                {capturedPreview ? "Review Photo" : "Camera"}
               </h3>
-              {currentLocation && !capturedPreview && (
-                <p className="text-green-400 text-[10px] flex items-center gap-1 mt-0.5">
-                  <MapPin className="w-3 h-3" />
-                  GPS: {currentLocation.lat.toFixed(5)}, {currentLocation.lng.toFixed(5)}
-                </p>
-              )}
-              {isGettingLocation && (
-                <p className="text-yellow-400 text-[10px] mt-0.5">Getting location...</p>
+              {photos.length > 0 && (
+                <span className="bg-green-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                  {photos.length} taken
+                </span>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => { setCapturedPreview(null); setCapturedFileName(""); stopCamera(); }}
-              className="text-white hover:text-red-400 transition-colors p-1"
-            >
-              <XCircle className="w-6 h-6" />
-            </button>
+            <div className="flex items-center gap-2">
+              {currentLocation && !capturedPreview && (
+                <span className="text-green-400 text-[10px] flex items-center gap-1">
+                  <MapPin className="w-3 h-3" />
+                  GPS
+                </span>
+              )}
+              {isGettingLocation && (
+                <span className="text-yellow-400 text-[10px]">Locating...</span>
+              )}
+            </div>
           </div>
           
           {capturedPreview ? (
@@ -497,26 +497,27 @@ export default function PhotoUploader({
                 />
               </div>
               
-              {/* Review Controls */}
-              <div className="p-3 sm:p-4 bg-gray-900 flex justify-center items-center gap-4 sm:gap-6 flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={retakePhoto}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-gray-700 hover:bg-gray-600 text-white rounded-full transition-colors text-sm"
-                  title="Retake"
-                >
-                  <Camera className="w-4 h-4" />
-                  Retake
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmCapturedPhoto}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-full transition-colors text-sm font-medium"
-                  title="Use & Take More"
-                >
-                  <Download className="w-4 h-4" />
-                  Use Photo
-                </button>
+              {/* Review Controls — two clear choices */}
+              <div className="p-4 bg-gray-900/95 flex-shrink-0">
+                <p className="text-white/60 text-xs text-center mb-3">Happy with this photo?</p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={retakePhoto}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl transition-colors text-sm font-medium"
+                  >
+                    <Camera className="w-4 h-4" />
+                    Retake
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmCapturedPhoto}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl transition-colors text-sm font-bold"
+                  >
+                    <Download className="w-4 h-4" />
+                    Use Photo
+                  </button>
+                </div>
               </div>
             </>
           ) : (
@@ -546,17 +547,12 @@ export default function PhotoUploader({
               </div>
               
               {/* Capture Controls */}
-              <div className="p-3 sm:p-4 bg-gray-900 flex-shrink-0">
-                {photos.length > 0 && (
-                  <div className="text-center mb-2">
-                    <span className="text-white/70 text-xs">{photos.length} photo{photos.length !== 1 ? "s" : ""} taken</span>
-                  </div>
-                )}
-                <div className="flex justify-center items-center gap-4 sm:gap-6">
+              <div className="p-3 sm:p-4 bg-gray-900/95 flex-shrink-0">
+                <div className="flex justify-center items-center gap-6 sm:gap-8">
                   <button
                     type="button"
                     onClick={switchCamera}
-                    className="w-11 h-11 sm:w-14 sm:h-14 bg-gray-700 hover:bg-gray-600 text-white rounded-full flex items-center justify-center transition-colors"
+                    className="w-12 h-12 bg-white/15 hover:bg-white/25 text-white rounded-full flex items-center justify-center transition-colors"
                     title="Switch Camera"
                   >
                     <SwitchCamera className="w-5 h-5" />
@@ -564,20 +560,22 @@ export default function PhotoUploader({
                   <button
                     type="button"
                     onClick={capturePhoto}
-                    className="w-16 h-16 sm:w-20 sm:h-20 bg-white hover:bg-gray-100 text-gray-900 rounded-full flex items-center justify-center transition-colors ring-4 ring-white/30"
-                    title="Capture"
+                    className="bg-white hover:bg-gray-100 text-gray-900 rounded-full flex items-center justify-center transition-colors ring-4 ring-white/30"
+                    style={{ width: '72px', height: '72px' }}
+                    title="Take Photo"
                   >
-                    <Camera className="w-7 h-7 sm:w-8 sm:h-8" />
+                    <Camera className="w-8 h-8" />
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => { setCapturedPreview(null); setCapturedFileName(""); stopCamera(); }}
-                    className="w-11 h-11 sm:w-14 sm:h-14 bg-green-600 hover:bg-green-500 text-white rounded-full flex items-center justify-center transition-colors"
-                    title="Done"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+                  <div className="w-12 h-12" />
                 </div>
+                {/* Done button */}
+                <button
+                  type="button"
+                  onClick={() => { setCapturedPreview(null); setCapturedFileName(""); stopCamera(); }}
+                  className="w-full mt-3 py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors"
+                >
+                  Done {photos.length > 0 ? `(${photos.length} photo${photos.length !== 1 ? "s" : ""})` : "— Close Camera"}
+                </button>
               </div>
             </>
           )}
