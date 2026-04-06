@@ -226,6 +226,14 @@ export default function PhotoUploader({
     });
   }, []);
 
+  const readFileAsDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.readAsDataURL(file);
+    });
+  };
+
   const addPhotosWithPreviews = useCallback(async (files: File[], addOverlay: boolean = false) => {
     let location: LocationData | null = null;
     
@@ -233,25 +241,24 @@ export default function PhotoUploader({
       location = await getCurrentLocation();
     }
 
+    const newFiles: File[] = [];
+    const newPreviews: string[] = [];
+
     for (const file of files) {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        let dataUrl = reader.result as string;
-        
-        if (addOverlay && location) {
-          dataUrl = await addOverlayToImage(dataUrl, location);
-        }
-        
-        // Convert back to file
-        const response = await fetch(dataUrl);
-        const blob = await response.blob();
-        const newFile = new File([blob], file.name, { type: 'image/jpeg' });
-        
-        onPhotosChange([...photos, newFile]);
-        setPreviews((prev) => [...prev, dataUrl]);
-      };
-      reader.readAsDataURL(file);
+      let dataUrl = await readFileAsDataUrl(file);
+      
+      if (addOverlay && location) {
+        dataUrl = await addOverlayToImage(dataUrl, location);
+      }
+      
+      const response = await fetch(dataUrl);
+      const blob = await response.blob();
+      newFiles.push(new File([blob], file.name, { type: 'image/jpeg' }));
+      newPreviews.push(dataUrl);
     }
+
+    onPhotosChange([...photos, ...newFiles]);
+    setPreviews((prev) => [...prev, ...newPreviews]);
   }, [photos, onPhotosChange, getCurrentLocation, addOverlayToImage]);
 
   const addPhotoFromDataUrl = useCallback(async (dataUrl: string, fileName: string, location: LocationData | null) => {
@@ -270,18 +277,14 @@ export default function PhotoUploader({
   }, [photos, onPhotosChange, addOverlayToImage]);
 
   const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
-      // For dropped/selected files, add them without overlay
-      // (user can use camera for GPS-tagged photos)
-      acceptedFiles.forEach((file) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const newPhotos = [...photos, file];
-          onPhotosChange(newPhotos);
-          setPreviews((prev) => [...prev, reader.result as string]);
-        };
-        reader.readAsDataURL(file);
-      });
+    async (acceptedFiles: File[]) => {
+      const newPreviews: string[] = [];
+      for (const file of acceptedFiles) {
+        const dataUrl = await readFileAsDataUrl(file);
+        newPreviews.push(dataUrl);
+      }
+      onPhotosChange([...photos, ...acceptedFiles]);
+      setPreviews((prev) => [...prev, ...newPreviews]);
     },
     [photos, onPhotosChange]
   );
@@ -289,24 +292,22 @@ export default function PhotoUploader({
   const handleCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      // Get location and add overlay for camera captures from input
       const location = await getCurrentLocation();
-      
-      for (const file of Array.from(files)) {
-        const reader = new FileReader();
-        reader.onload = async () => {
-          const dataUrl = reader.result as string;
-          const overlayedDataUrl = await addOverlayToImage(dataUrl, location);
-          
-          const response = await fetch(overlayedDataUrl);
-          const blob = await response.blob();
-          const newFile = new File([blob], file.name, { type: 'image/jpeg' });
-          
-          onPhotosChange([...photos, newFile]);
-          setPreviews((prev) => [...prev, overlayedDataUrl]);
-        };
-        reader.readAsDataURL(file);
+      const fileArray = Array.from(files);
+      const newFiles: File[] = [];
+      const newPreviews: string[] = [];
+
+      for (const file of fileArray) {
+        const dataUrl = await readFileAsDataUrl(file);
+        const overlayedDataUrl = await addOverlayToImage(dataUrl, location);
+        const response = await fetch(overlayedDataUrl);
+        const blob = await response.blob();
+        newFiles.push(new File([blob], file.name, { type: 'image/jpeg' }));
+        newPreviews.push(overlayedDataUrl);
       }
+
+      onPhotosChange([...photos, ...newFiles]);
+      setPreviews((prev) => [...prev, ...newPreviews]);
     }
     if (cameraInputRef.current) {
       cameraInputRef.current.value = "";
@@ -387,7 +388,7 @@ export default function PhotoUploader({
       setPreviews((prev) => [...prev, capturedPreview]);
       setCapturedPreview(null);
       setCapturedFileName("");
-      stopCamera();
+      // Stay in camera mode so user can take more photos
     }
   };
 
@@ -508,7 +509,7 @@ export default function PhotoUploader({
                 <button
                   onClick={confirmCapturedPhoto}
                   className="flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-full transition-colors text-sm font-medium"
-                  title="Use Photo"
+                  title="Use & Take More"
                 >
                   <Download className="w-4 h-4" />
                   Use Photo
@@ -542,28 +543,35 @@ export default function PhotoUploader({
               </div>
               
               {/* Capture Controls */}
-              <div className="p-3 sm:p-4 bg-gray-900 flex justify-center items-center gap-4 sm:gap-6 flex-shrink-0">
-                <button
-                  onClick={() => { setCapturedPreview(null); setCapturedFileName(""); stopCamera(); }}
-                  className="w-11 h-11 sm:w-14 sm:h-14 bg-gray-700 hover:bg-gray-600 text-white rounded-full flex items-center justify-center transition-colors"
-                  title="Cancel"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={capturePhoto}
-                  className="w-16 h-16 sm:w-20 sm:h-20 bg-white hover:bg-gray-100 text-gray-900 rounded-full flex items-center justify-center transition-colors ring-4 ring-white/30"
-                  title="Capture"
-                >
-                  <Camera className="w-7 h-7 sm:w-8 sm:h-8" />
-                </button>
-                <button
-                  onClick={switchCamera}
-                  className="w-11 h-11 sm:w-14 sm:h-14 bg-gray-700 hover:bg-gray-600 text-white rounded-full flex items-center justify-center transition-colors"
-                  title="Switch Camera"
-                >
-                  <SwitchCamera className="w-5 h-5" />
-                </button>
+              <div className="p-3 sm:p-4 bg-gray-900 flex-shrink-0">
+                {photos.length > 0 && (
+                  <div className="text-center mb-2">
+                    <span className="text-white/70 text-xs">{photos.length} photo{photos.length !== 1 ? "s" : ""} taken</span>
+                  </div>
+                )}
+                <div className="flex justify-center items-center gap-4 sm:gap-6">
+                  <button
+                    onClick={switchCamera}
+                    className="w-11 h-11 sm:w-14 sm:h-14 bg-gray-700 hover:bg-gray-600 text-white rounded-full flex items-center justify-center transition-colors"
+                    title="Switch Camera"
+                  >
+                    <SwitchCamera className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={capturePhoto}
+                    className="w-16 h-16 sm:w-20 sm:h-20 bg-white hover:bg-gray-100 text-gray-900 rounded-full flex items-center justify-center transition-colors ring-4 ring-white/30"
+                    title="Capture"
+                  >
+                    <Camera className="w-7 h-7 sm:w-8 sm:h-8" />
+                  </button>
+                  <button
+                    onClick={() => { setCapturedPreview(null); setCapturedFileName(""); stopCamera(); }}
+                    className="w-11 h-11 sm:w-14 sm:h-14 bg-green-600 hover:bg-green-500 text-white rounded-full flex items-center justify-center transition-colors"
+                    title="Done"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
             </>
           )}

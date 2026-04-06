@@ -36,6 +36,9 @@ func main() {
 	// Create Gin router
 	r := gin.Default()
 
+	// Allow large photo uploads (200MB max)
+	r.MaxMultipartMemory = 200 << 20
+
 	// Get allowed origins from environment or use defaults
 	allowedOrigins := []string{"http://localhost:3000"}
 	if frontendURL := os.Getenv("FRONTEND_URL"); frontendURL != "" {

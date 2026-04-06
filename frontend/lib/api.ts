@@ -116,17 +116,22 @@ export const inspectionApi = {
     await api.delete(`/api/inspections/${id}`);
   },
 
-  // Upload photos
+  // Upload photos in batches to avoid size/timeout limits
   uploadPhotos: async (id: string, files: File[]): Promise<void> => {
-    const formData = new FormData();
-    files.forEach((file) => {
-      formData.append("photos", file);
-    });
-    await api.post(`/api/inspections/${id}/photos`, formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    });
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < files.length; i += BATCH_SIZE) {
+      const batch = files.slice(i, i + BATCH_SIZE);
+      const formData = new FormData();
+      batch.forEach((file) => {
+        formData.append("photos", file);
+      });
+      await api.post(`/api/inspections/${id}/photos`, formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+        timeout: 120000,
+      });
+    }
   },
 
   // Delete photo
