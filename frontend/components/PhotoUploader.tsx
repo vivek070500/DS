@@ -478,6 +478,7 @@ export default function PhotoUploader({
               )}
             </div>
             <button
+              type="button"
               onClick={() => { setCapturedPreview(null); setCapturedFileName(""); stopCamera(); }}
               className="text-white hover:text-red-400 transition-colors p-1"
             >
@@ -499,6 +500,7 @@ export default function PhotoUploader({
               {/* Review Controls */}
               <div className="p-3 sm:p-4 bg-gray-900 flex justify-center items-center gap-4 sm:gap-6 flex-shrink-0">
                 <button
+                  type="button"
                   onClick={retakePhoto}
                   className="flex items-center gap-2 px-5 py-2.5 bg-gray-700 hover:bg-gray-600 text-white rounded-full transition-colors text-sm"
                   title="Retake"
@@ -507,6 +509,7 @@ export default function PhotoUploader({
                   Retake
                 </button>
                 <button
+                  type="button"
                   onClick={confirmCapturedPhoto}
                   className="flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-full transition-colors text-sm font-medium"
                   title="Use & Take More"
@@ -551,6 +554,7 @@ export default function PhotoUploader({
                 )}
                 <div className="flex justify-center items-center gap-4 sm:gap-6">
                   <button
+                    type="button"
                     onClick={switchCamera}
                     className="w-11 h-11 sm:w-14 sm:h-14 bg-gray-700 hover:bg-gray-600 text-white rounded-full flex items-center justify-center transition-colors"
                     title="Switch Camera"
@@ -558,6 +562,7 @@ export default function PhotoUploader({
                     <SwitchCamera className="w-5 h-5" />
                   </button>
                   <button
+                    type="button"
                     onClick={capturePhoto}
                     className="w-16 h-16 sm:w-20 sm:h-20 bg-white hover:bg-gray-100 text-gray-900 rounded-full flex items-center justify-center transition-colors ring-4 ring-white/30"
                     title="Capture"
@@ -565,6 +570,7 @@ export default function PhotoUploader({
                     <Camera className="w-7 h-7 sm:w-8 sm:h-8" />
                   </button>
                   <button
+                    type="button"
                     onClick={() => { setCapturedPreview(null); setCapturedFileName(""); stopCamera(); }}
                     className="w-11 h-11 sm:w-14 sm:h-14 bg-green-600 hover:bg-green-500 text-white rounded-full flex items-center justify-center transition-colors"
                     title="Done"
